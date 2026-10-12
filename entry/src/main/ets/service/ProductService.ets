@@ -7,14 +7,25 @@ import { businessApiClient, BusinessApiError } from './BusinessApiClient';
 export interface ProductService {
   getProductFeed(): Promise<Product[]>;
   searchByKeyword(keyword: string): Promise<Product[]>;
+  searchProducts(query: ProductQuery): Promise<Product[]>;
   getProductsBySeller(sellerId: string): Promise<Product[]>;
   getProductDetail(productId: string): Promise<ProductDetail | null>;
   publishProduct(draft: PublishDraft): Promise<Product>;
+  delistProduct(productId: string): Promise<Product>;
+  relistProduct(productId: string): Promise<Product>;
 }
 
 interface ProductListResponse {
   items: Product[];
   nextCursor: string | null;
+}
+
+/** Filters are ORed within one field and ANDed across fields, matching the business API. */
+export interface ProductQuery {
+  keyword: string;
+  categories: string[];
+  campuses: string[];
+  priceRanges: string[];
 }
 
 class UploadBytes {
@@ -90,6 +101,37 @@ export class HttpProductService implements ProductService {
       return [];
     }
     return this.list(`/api/v1/products?q=${encodeURIComponent(keyword.trim())}`);
+  }
+
+  async searchProducts(query: ProductQuery): Promise<Product[]> {
+    const parts: string[] = [];
+    const keyword: string = query.keyword.trim();
+    if (keyword !== '') {
+      parts.push(`q=${encodeURIComponent(keyword)}`);
+    }
+    for (const category of query.categories) {
+      parts.push(`category=${encodeURIComponent(category)}`);
+    }
+    for (const campus of query.campuses) {
+      parts.push(`campus=${encodeURIComponent(campus)}`);
+    }
+    for (const price of query.priceRanges) {
+      parts.push(`price=${encodeURIComponent(price)}`);
+    }
+    if (parts.length === 0) {
+      return [];
+    }
+    return this.list(`/api/v1/products?${parts.join('&')}`);
+  }
+
+  async delistProduct(productId: string): Promise<Product> {
+    return await businessApiClient.request<Product>(http.RequestMethod.POST,
+      `/api/v1/products/${encodeURIComponent(productId)}/delist`);
+  }
+
+  async relistProduct(productId: string): Promise<Product> {
+    return await businessApiClient.request<Product>(http.RequestMethod.POST,
+      `/api/v1/products/${encodeURIComponent(productId)}/relist`);
   }
 
   async getProductsBySeller(_sellerId: string): Promise<Product[]> {

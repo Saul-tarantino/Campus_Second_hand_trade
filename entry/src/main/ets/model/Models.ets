@@ -3,7 +3,8 @@ export enum TransactionStatus {
   PENDING = 'PENDING',
   ACCEPTED = 'ACCEPTED',
   REJECTED = 'REJECTED',
-  COMPLETED = 'COMPLETED'
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED'
 }
 
 export interface User {

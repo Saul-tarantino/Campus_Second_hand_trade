@@ -38,6 +38,13 @@ export class TradeViewModel {
         this.detail.transaction.status === TransactionStatus.ACCEPTED);
   }
 
+  /** Both sides may walk away while the deal is still open. */
+  get canCancel(): boolean {
+    return this.detail !== null && (this.isBuyer || this.isSeller) &&
+      (this.detail.transaction.status === TransactionStatus.PENDING ||
+        this.detail.transaction.status === TransactionStatus.ACCEPTED);
+  }
+
   get buyerStatusHint(): string {
     return this.isBuyer && this.detail !== null && this.detail.transaction.status === TransactionStatus.PENDING
       ? BUYER_PENDING_HINT : '';
@@ -105,6 +112,10 @@ export class TradeViewModel {
     return this.changeStatus('complete');
   }
 
+  async cancel(): Promise<boolean> {
+    return this.changeStatus('cancel', true);
+  }
+
   async send(): Promise<boolean> {
     if (!this.canChat || this.sending || this.detail === null) {
       return false;
@@ -169,8 +180,11 @@ export class TradeViewModel {
     }, 3000);
   }
 
-  private async changeStatus(action: string): Promise<boolean> {
-    if (this.detail === null || !this.isSeller || this.actioning) {
+  private async changeStatus(action: string, allowBuyer: boolean = false): Promise<boolean> {
+    if (this.detail === null || this.actioning) {
+      return false;
+    }
+    if (!allowBuyer && !this.isSeller) {
       this.lastError = '只有卖家可以执行状态操作';
       return false;
     }
@@ -188,6 +202,8 @@ export class TradeViewModel {
         updated = await transactionService.acceptTransaction(detail.transaction.id, current.id);
       } else if (action === 'reject') {
         updated = await transactionService.rejectTransaction(detail.transaction.id, current.id);
+      } else if (action === 'cancel') {
+        updated = await transactionService.cancelTransaction(detail.transaction.id, current.id);
       } else {
         updated = await transactionService.completeTransaction(detail.transaction.id, current.id);
       }

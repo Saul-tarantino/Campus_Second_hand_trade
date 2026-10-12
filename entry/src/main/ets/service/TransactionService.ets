@@ -9,6 +9,7 @@ export interface TransactionService {
   acceptTransaction(transactionId: string, operatorId: string): Promise<Transaction>;
   rejectTransaction(transactionId: string, operatorId: string): Promise<Transaction>;
   completeTransaction(transactionId: string, operatorId: string): Promise<Transaction>;
+  cancelTransaction(transactionId: string, operatorId: string): Promise<Transaction>;
 }
 
 interface TransactionListResponse {
@@ -65,6 +66,10 @@ export class HttpTransactionService implements TransactionService {
 
   async completeTransaction(transactionId: string, _operatorId: string): Promise<Transaction> {
     return this.transition(transactionId, 'complete');
+  }
+
+  async cancelTransaction(transactionId: string, _operatorId: string): Promise<Transaction> {
+    return this.transition(transactionId, 'cancel');
   }
 
   private async transition(transactionId: string, action: string): Promise<Transaction> {

@@ -16,6 +16,23 @@ export const PRODUCT_CATEGORIES: CategoryOption[] = [
 export const CAMPUS_OPTIONS: string[] = ['江湾校区', '邯郸校区', '张江校区', '枫林校区'];
 export const CONDITION_OPTIONS: string[] = ['new', 'like_new', 'good', 'fair', 'unknown'];
 
+/** Price filter values use the `min-max` yuan format understood by the business API. */
+export interface PriceFilterOption {
+  value: string;
+  label: string;
+}
+
+export const PRICE_FILTER_OPTIONS: PriceFilterOption[] = [
+  { value: '0-0.99', label: '1 元以下' },
+  { value: '1-10', label: '1-10 元' },
+  { value: '10-50', label: '10-50 元' },
+  { value: '50-100', label: '50-100 元' },
+  { value: '100-300', label: '100-300 元' },
+  { value: '300-', label: '300 元以上' }
+];
+
+export const BROWSE_CATEGORIES: string[] = ['教材', '数码', '外设', '日用', '运动', '其他'];
+
 export function homeCategory(category: string | undefined): string {
   const value: string = (category || '').trim();
   for (const option of PRODUCT_CATEGORIES) {

@@ -3,14 +3,16 @@ import { SellerHomeViewModel } from '../viewmodel/SellerHomeViewModel';
 import { StateView } from '../components/StateView';
 import { formatPrice, formatTime } from '../common/Utils';
 import {
-  COLOR_PAGE_BG, COLOR_PRICE, COLOR_PRIMARY, COLOR_TEXT_PRIMARY, COLOR_TEXT_TERTIARY,
-  LoadState, ROUTE_PRODUCT_DETAIL, ROUTE_PUBLISH_PAGE
+  COLOR_DIVIDER, COLOR_PAGE_BG, COLOR_PRICE, COLOR_PRIMARY, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY,
+  COLOR_TEXT_TERTIARY, LoadState, PRODUCT_STATUS_ACTIVE, PRODUCT_STATUS_OFFLINE, PRODUCT_STATUS_SOLD,
+  ROUTE_PRODUCT_DETAIL, ROUTE_PUBLISH_PAGE, STATUS_ACCEPTED_TEXT_COLOR, STATUS_COMPLETED_TEXT_COLOR
 } from '../common/Constants';
 
 @ComponentV2
 export struct SellerHomeView {
   @Local vm: SellerHomeViewModel = new SellerHomeViewModel();
   @Local pathStack: NavPathStack = new NavPathStack();
+  @Local confirmingId: string = '';
   private firstShow: boolean = true;
 
   build() {
@@ -56,6 +58,22 @@ export struct SellerHomeView {
                     .alignItems(HorizontalAlign.Start);
                   }
                   .layoutWeight(1).alignItems(HorizontalAlign.Start);
+                  Column({ space: 6 }) {
+                    Text(this.statusLabel(item.status)).fontSize('11fp')
+                      .fontColor(this.statusColor(item.status));
+                    if (item.status === PRODUCT_STATUS_ACTIVE || item.status === PRODUCT_STATUS_OFFLINE) {
+                      Button(this.actionLabel(item))
+                        .fontSize('12fp').height(32).padding({ left: 12, right: 12 })
+                        .backgroundColor(this.confirmingId === item.id ? COLOR_PRIMARY : Color.White)
+                        .fontColor(this.confirmingId === item.id ? Color.White : COLOR_TEXT_SECONDARY)
+                        .borderRadius(16).borderWidth(1).borderColor(COLOR_DIVIDER)
+                        .enabled(this.vm.actioningId === '')
+                        .onClick(async () => {
+                          await this.onToggleListing(item);
+                        });
+                    }
+                  }
+                  .alignItems(HorizontalAlign.End);
                 }
                 .width('100%').padding(12).backgroundColor(Color.White).borderRadius(16)
                 .onClick(() => this.pathStack.pushPathByName(ROUTE_PRODUCT_DETAIL, item.id));
@@ -91,6 +109,48 @@ export struct SellerHomeView {
       } else {
         this.vm.loadMyProducts(true);
       }
+    });
+  }
+
+  private statusLabel(status: string | undefined): string {
+    if (status === PRODUCT_STATUS_OFFLINE) {
+      return '已下架';
+    }
+    if (status === PRODUCT_STATUS_SOLD) {
+      return '已售出';
+    }
+    return '在售';
+  }
+
+  private statusColor(status: string | undefined): string {
+    if (status === PRODUCT_STATUS_OFFLINE) {
+      return COLOR_TEXT_TERTIARY;
+    }
+    if (status === PRODUCT_STATUS_SOLD) {
+      return STATUS_COMPLETED_TEXT_COLOR;
+    }
+    return STATUS_ACCEPTED_TEXT_COLOR;
+  }
+
+  private actionLabel(item: Product): string {
+    if (item.status === PRODUCT_STATUS_OFFLINE) {
+      return '重新上架';
+    }
+    return this.confirmingId === item.id ? '确认下架' : '下架';
+  }
+
+  /** Delisting is one tap; a second tap on the same item confirms it. */
+  private async onToggleListing(item: Product): Promise<void> {
+    const offline: boolean = item.status === PRODUCT_STATUS_OFFLINE;
+    if (!offline && this.confirmingId !== item.id) {
+      this.confirmingId = item.id;
+      return;
+    }
+    this.confirmingId = '';
+    const success: boolean = offline ? await this.vm.relist(item.id) : await this.vm.delist(item.id);
+    this.getUIContext().getPromptAction().showToast({
+      message: success ? (offline ? '已重新上架' : '已下架') : (this.vm.actionError || '操作失败，请稍后重试'),
+      duration: 1500
     });
   }
 }

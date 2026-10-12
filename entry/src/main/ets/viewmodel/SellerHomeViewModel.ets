@@ -8,7 +8,39 @@ export class SellerHomeViewModel {
   @Trace state: LoadState = LoadState.LOADING;
   @Trace products: Product[] = [];
   @Trace error: string = '';
+  @Trace actioningId: string = '';
+  @Trace actionError: string = '';
   private requestSeq: number = 0;
+
+  async delist(productId: string): Promise<boolean> {
+    return this.changeListing(productId, false);
+  }
+
+  async relist(productId: string): Promise<boolean> {
+    return this.changeListing(productId, true);
+  }
+
+  private async changeListing(productId: string, relist: boolean): Promise<boolean> {
+    if (this.actioningId !== '') {
+      return false;
+    }
+    this.actioningId = productId;
+    this.actionError = '';
+    try {
+      if (relist) {
+        await productService.relistProduct(productId);
+      } else {
+        await productService.delistProduct(productId);
+      }
+      await this.loadMyProducts(true);
+      return true;
+    } catch (error) {
+      this.actionError = (error as Error).message || '操作失败，请稍后重试';
+      return false;
+    } finally {
+      this.actioningId = '';
+    }
+  }
 
   async loadMyProducts(silent: boolean = false): Promise<void> {
     const seq: number = ++this.requestSeq;

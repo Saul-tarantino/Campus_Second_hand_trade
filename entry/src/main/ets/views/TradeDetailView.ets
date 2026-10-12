@@ -12,6 +12,7 @@ export struct TradeDetailView {
   @Local vm: TradeViewModel = new TradeViewModel();
   @Local pathStack: NavPathStack = new NavPathStack();
   @Local transactionId: string = '';
+  @Local confirmingCancel: boolean = false;
 
   aboutToDisappear(): void {
     this.vm.dispose();
@@ -102,6 +103,30 @@ export struct TradeDetailView {
             .borderRadius(21).enabled(!this.vm.actioning).onClick(async () => {
               const success: boolean = await this.vm.complete();
               this.showActionToast(success, '交易已完成');
+            });
+        }
+      }
+      .width('100%').padding({ left: 16, right: 16, top: 8 });
+    }
+    if (this.vm.canCancel) {
+      Row({ space: 10 }) {
+        if (this.confirmingCancel) {
+          Button('确认取消交易').layoutWeight(1).height(44).fontSize('14fp').fontColor(Color.White)
+            .backgroundColor(STATUS_REJECTED_TEXT_COLOR).borderRadius(21).enabled(!this.vm.actioning)
+            .onClick(async () => {
+              const success: boolean = await this.vm.cancel();
+              this.confirmingCancel = false;
+              this.showActionToast(success, '交易已取消');
+            });
+          Button('再想想').layoutWeight(1).height(44).fontSize('14fp').fontColor(COLOR_TEXT_SECONDARY)
+            .backgroundColor(Color.White).borderRadius(21).onClick(() => {
+              this.confirmingCancel = false;
+            });
+        } else {
+          Button('取消交易').width('100%').height(44).fontSize('14fp').fontColor(COLOR_TEXT_SECONDARY)
+            .backgroundColor(Color.White).borderRadius(21).enabled(!this.vm.actioning)
+            .onClick(() => {
+              this.confirmingCancel = true;
             });
         }
       }

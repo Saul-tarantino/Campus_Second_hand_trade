@@ -65,6 +65,7 @@ struct Index {
       TextInput({ placeholder: '请输入 11 位手机号', text: this.vm.phone })
         .type(InputType.PhoneNumber).maxLength(11).height(48).fontSize(15)
         .backgroundColor(COLOR_PAGE_BG).borderRadius(12).padding({ left: 14, right: 14 })
+        .enabled(!this.vm.loggingIn)
         .onChange((value: string) => {
           this.vm.phone = value;
           this.vm.phoneError = '';
@@ -76,6 +77,7 @@ struct Index {
         TextInput({ placeholder: '请输入 6 位数字验证码', text: this.vm.smsCode })
           .type(InputType.Number).maxLength(6).height(48).layoutWeight(1).fontSize(15)
           .backgroundColor(COLOR_PAGE_BG).borderRadius(12).padding({ left: 14, right: 14 })
+          .enabled(!this.vm.loggingIn)
           .onChange((value: string) => {
             this.vm.smsCode = value;
             this.vm.smsCodeError = '';

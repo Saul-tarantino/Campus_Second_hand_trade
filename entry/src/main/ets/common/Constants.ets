@@ -45,6 +45,12 @@ export const STATUS_REJECTED_TEXT_COLOR: string = '#E5484D';
 export const STATUS_REJECTED_BG_COLOR: string = '#E5484D1F';
 export const STATUS_COMPLETED_TEXT_COLOR: string = '#5B7A9D';
 export const STATUS_COMPLETED_BG_COLOR: string = '#5B7A9D1F';
+export const STATUS_CANCELLED_TEXT_COLOR: string = '#8A8A8A';
+export const STATUS_CANCELLED_BG_COLOR: string = '#8A8A8A1F';
+
+export const PRODUCT_STATUS_ACTIVE: string = 'ACTIVE';
+export const PRODUCT_STATUS_SOLD: string = 'SOLD';
+export const PRODUCT_STATUS_OFFLINE: string = 'OFFLINE';
 
 export enum LoadState {
   LOADING = 0,
@@ -64,6 +70,8 @@ export class TradeStatusUI {
         return '已关闭';
       case TransactionStatus.COMPLETED:
         return '已完成';
+      case TransactionStatus.CANCELLED:
+        return '已取消';
       default:
         return '未知';
     }
@@ -79,6 +87,8 @@ export class TradeStatusUI {
         return STATUS_REJECTED_TEXT_COLOR;
       case TransactionStatus.COMPLETED:
         return STATUS_COMPLETED_TEXT_COLOR;
+      case TransactionStatus.CANCELLED:
+        return STATUS_CANCELLED_TEXT_COLOR;
       default:
         return COLOR_TEXT_SECONDARY;
     }
@@ -94,6 +104,8 @@ export class TradeStatusUI {
         return STATUS_REJECTED_BG_COLOR;
       case TransactionStatus.COMPLETED:
         return STATUS_COMPLETED_BG_COLOR;
+      case TransactionStatus.CANCELLED:
+        return STATUS_CANCELLED_BG_COLOR;
       default:
         return COLOR_DIVIDER;
     }

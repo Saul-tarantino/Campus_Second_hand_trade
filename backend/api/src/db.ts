@@ -12,10 +12,17 @@ export function openDatabase(config: Config): DatabaseSync {
   return db;
 }
 
+const SCHEMA_VERSION = 2;
+
 function migrate(db: DatabaseSync): void {
   const version = db.prepare('PRAGMA user_version').get() as { user_version: number };
-  if (version.user_version > 1) throw new Error('Database schema is newer than this API');
-  if (version.user_version === 1) return;
+  if (version.user_version > SCHEMA_VERSION) throw new Error('Database schema is newer than this API');
+  if (version.user_version >= SCHEMA_VERSION) return;
+  if (version.user_version === 0) createInitialSchema(db);
+  upgradeToV2(db);
+}
+
+function createInitialSchema(db: DatabaseSync): void {
   db.exec(`
     BEGIN IMMEDIATE;
     CREATE TABLE users (
@@ -73,6 +80,51 @@ function migrate(db: DatabaseSync): void {
     PRAGMA user_version=1;
     COMMIT;
   `);
+}
+
+/** Adds the OFFLINE product status and the CANCELLED transaction status. */
+function upgradeToV2(db: DatabaseSync): void {
+  db.exec('PRAGMA foreign_keys=OFF; PRAGMA legacy_alter_table=ON;');
+  try {
+    db.exec(`
+      BEGIN IMMEDIATE;
+      CREATE TABLE products_v2 (
+        id TEXT PRIMARY KEY, seller_id TEXT NOT NULL REFERENCES users(id), school_id TEXT NOT NULL,
+        title TEXT NOT NULL, description TEXT NOT NULL, price_cents INTEGER NOT NULL CHECK(price_cents > 0),
+        category TEXT NOT NULL, condition TEXT NOT NULL, campus TEXT NOT NULL, version TEXT,
+        status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE','SOLD','OFFLINE')),
+        published_at INTEGER NOT NULL
+      );
+      INSERT INTO products_v2 SELECT id,seller_id,school_id,title,description,price_cents,category,condition,campus,version,status,published_at FROM products;
+      DROP TABLE products;
+      ALTER TABLE products_v2 RENAME TO products;
+      CREATE INDEX products_feed ON products(school_id,status,published_at DESC,id DESC);
+      CREATE INDEX products_seller ON products(seller_id,published_at DESC,id DESC);
+      CREATE INDEX products_campus ON products(school_id,status,campus);
+
+      CREATE TABLE transactions_v2 (
+        id TEXT PRIMARY KEY, product_id TEXT NOT NULL REFERENCES products(id),
+        buyer_id TEXT NOT NULL REFERENCES users(id), seller_id TEXT NOT NULL REFERENCES users(id),
+        school_id TEXT NOT NULL, create_time INTEGER NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('PENDING','ACCEPTED','REJECTED','COMPLETED','CANCELLED')),
+        price_cents INTEGER NOT NULL, title_snapshot TEXT NOT NULL
+      );
+      INSERT INTO transactions_v2(id,product_id,buyer_id,seller_id,school_id,create_time,status,price_cents,title_snapshot)
+        SELECT id,product_id,buyer_id,seller_id,school_id,create_time,status,price_cents,title_snapshot FROM transactions;
+      DROP TABLE transactions;
+      ALTER TABLE transactions_v2 RENAME TO transactions;
+      CREATE UNIQUE INDEX one_active_transaction_per_product ON transactions(product_id)
+        WHERE status IN ('PENDING','ACCEPTED');
+      CREATE INDEX transactions_buyer ON transactions(buyer_id,create_time DESC,id DESC);
+      CREATE INDEX transactions_seller ON transactions(seller_id,create_time DESC,id DESC);
+      PRAGMA user_version=2;
+      COMMIT;
+    `);
+    const violations = db.prepare('PRAGMA foreign_key_check').all();
+    if (violations.length > 0) throw new Error(`Database migration left ${violations.length} foreign key violation(s)`);
+  } finally {
+    db.exec('PRAGMA legacy_alter_table=OFF; PRAGMA foreign_keys=ON;');
+  }
 }
 
 export function transaction<T>(db: DatabaseSync, action: () => T): T {

@@ -121,6 +121,10 @@ async function route(req: IncomingMessage, res: ServerResponse, store: Store, ri
   if (method === 'POST' && path === '/api/v1/products') { send(res, 201, store.publish(user, await readJson(req)), rid); return; }
   const productMatch = /^\/api\/v1\/products\/(listing_[a-z0-9_-]{1,64})$/.exec(path);
   if (method === 'GET' && productMatch?.[1]) { send(res, 200, store.publicProduct(productMatch[1], user), rid); return; }
+  const delistMatch = /^\/api\/v1\/products\/(listing_[a-z0-9_-]{1,64})\/delist$/.exec(path);
+  if (method === 'POST' && delistMatch?.[1]) { send(res, 200, store.delist(delistMatch[1], user), rid); return; }
+  const relistMatch = /^\/api\/v1\/products\/(listing_[a-z0-9_-]{1,64})\/relist$/.exec(path);
+  if (method === 'POST' && relistMatch?.[1]) { send(res, 200, store.relist(relistMatch[1], user), rid); return; }
   if (method === 'POST' && path === '/api/v1/uploads') {
     const bytes = await readBytes(req, 5_000_000);
     const type = imageType(bytes);
@@ -157,9 +161,9 @@ async function route(req: IncomingMessage, res: ServerResponse, store: Store, ri
   if (method === 'GET' && path === '/api/v1/transactions') { send(res, 200, store.transactions(user, url.searchParams), rid); return; }
   const transactionMatch = /^\/api\/v1\/transactions\/(trade_[a-f0-9-]{36})$/.exec(path);
   if (method === 'GET' && transactionMatch?.[1]) { send(res, 200, store.transactionDetail(transactionMatch[1], user), rid); return; }
-  const actionMatch = /^\/api\/v1\/transactions\/(trade_[a-f0-9-]{36})\/(accept|reject|complete)$/.exec(path);
+  const actionMatch = /^\/api\/v1\/transactions\/(trade_[a-f0-9-]{36})\/(accept|reject|complete|cancel)$/.exec(path);
   if (method === 'POST' && actionMatch?.[1] && actionMatch[2]) {
-    send(res, 200, store.transition(actionMatch[1], user, actionMatch[2] as 'accept' | 'reject' | 'complete'), rid); return;
+    send(res, 200, store.transition(actionMatch[1], user, actionMatch[2] as 'accept' | 'reject' | 'complete' | 'cancel'), rid); return;
   }
   const messagesMatch = /^\/api\/v1\/transactions\/(trade_[a-f0-9-]{36})\/messages$/.exec(path);
   if (messagesMatch?.[1] && method === 'GET') { send(res, 200, store.messages(messagesMatch[1], user, url.searchParams), rid); return; }
