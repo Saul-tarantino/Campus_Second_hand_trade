@@ -169,7 +169,7 @@ export struct HomeView {
       }
       if (this.vm.feedState === LoadState.CONTENT) {
         if (this.filteredProducts().length > 0) {
-          this.productGrid(this.filteredProducts());
+          this.productGrid();
         } else {
           Column() {
             StateView({ state: LoadState.EMPTY, emptyText: '暂时没有相关商品', emptyHint: '试试其他分类，或用 AI 找物描述需求' });
@@ -218,10 +218,14 @@ export struct HomeView {
     return this.vm.products.filter((item: Product): boolean => homeCategory(item.category) === this.category);
   }
 
+  /**
+   * Reads the view model directly: a parameterised @Builder receives a snapshot and would not
+   * re-render when the feed changes, which is why refresh used to need an app restart.
+   */
   @Builder
-  productGrid(items: Product[]): void {
+  productGrid(): void {
     WaterFlow({ scroller: this.feedScroller }) {
-      ForEach(items, (item: Product) => {
+      ForEach(this.filteredProducts(), (item: Product) => {
         FlowItem() {
           ProductCard({
             product: item,
