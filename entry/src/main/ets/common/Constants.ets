@@ -24,6 +24,7 @@ export const COLOR_TEXT_PRIMARY: string = '#1A1918';
 export const COLOR_TEXT_SECONDARY: string = '#6D6C6A';
 export const COLOR_TEXT_TERTIARY: string = '#75736F';
 export const COLOR_ERROR: string = '#B83232';
+export const COLOR_SUCCESS: string = '#2E9E5B';
 export const COLOR_PAGE_BG: string = '#F5F4F1';
 export const COLOR_CARD_BG: string = '#FFFFFF';
 export const COLOR_DIVIDER: string = '#E5E4E1';

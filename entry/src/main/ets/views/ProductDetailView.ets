@@ -11,6 +11,11 @@ export struct ProductDetailView {
   @Local vm: ProductDetailViewModel = new ProductDetailViewModel();
   @Local pathStack: NavPathStack = new NavPathStack();
   @Local productId: string = '';
+  @Local mediaWidth: number = 0;
+
+  private mediaEdge(): number {
+    return this.mediaWidth > 0 ? this.mediaWidth : 320;
+  }
 
   build() {
     NavDestination() {
@@ -21,16 +26,28 @@ export struct ProductDetailView {
               if (this.vm.detail.product.images.length > 0) {
                 Swiper() {
                   ForEach(this.vm.detail.product.images, (source: string) => {
-                    Image(source).width('100%').aspectRatio(1).objectFit(ImageFit.Cover);
+                    Image(source).width(this.mediaEdge()).height(this.mediaEdge()).objectFit(ImageFit.Cover);
                   }, (source: string): string => source);
                 }
-                .indicator(true).width('100%').backgroundColor(Color.White);
+                .indicator(true).width('100%').height(this.mediaEdge()).backgroundColor(Color.White)
+                .onAreaChange((_oldValue: Area, newValue: Area) => {
+                  const width: number = Number(newValue.width);
+                  if (width > 0 && Math.abs(width - this.mediaWidth) > 0.5) {
+                    this.mediaWidth = width;
+                  }
+                });
               } else {
                 Column({ space: 8 }) {
                   Text('📷').fontSize('48fp');
                   Text('暂无图片').fontSize('13fp').fontColor(COLOR_TEXT_TERTIARY);
                 }
-                .width('100%').aspectRatio(1).justifyContent(FlexAlign.Center).backgroundColor(Color.White);
+                .width('100%').height(this.mediaEdge()).justifyContent(FlexAlign.Center).backgroundColor(Color.White)
+                .onAreaChange((_oldValue: Area, newValue: Area) => {
+                  const width: number = Number(newValue.width);
+                  if (width > 0 && Math.abs(width - this.mediaWidth) > 0.5) {
+                    this.mediaWidth = width;
+                  }
+                });
               }
               Column({ space: 10 }) {
                 Text(this.vm.detail.product.title).fontSize('21fp').fontWeight(FontWeight.Bold)

@@ -3,7 +3,7 @@ import { camera, cameraPicker as picker } from '@kit.CameraKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { PublishDraft } from '../model/Models';
 import { productService } from '../service/ProductService';
-import { isValidPrice, parsePrice } from '../common/Utils';
+import { isValidPrice, parsePrice, priceInputError } from '../common/Utils';
 import { MAX_PRODUCT_PHOTOS } from '../common/Constants';
 import { CAMPUS_OPTIONS, isPublishCategory } from '../common/MarketOptions';
 
@@ -20,6 +20,7 @@ export class PublishViewModel {
   @Trace titleError: string = '';
   @Trace descriptionError: string = '';
   @Trace priceError: string = '';
+  @Trace priceOk: boolean = false;
   @Trace photoError: string = '';
   @Trace categoryError: string = '';
   @Trace campusError: string = '';
@@ -33,11 +34,18 @@ export class PublishViewModel {
   validate(): boolean {
     this.titleError = this.title.trim() === '' ? '请输入商品名称' : '';
     this.descriptionError = this.description.trim() === '' ? '请输入商品描述' : '';
-    this.priceError = isValidPrice(this.priceText) ? '' : '请输入大于 0 的合法价格';
+    this.priceError = isValidPrice(this.priceText) ? '' : (priceInputError(this.priceText) || '请输入大于 0 的合法价格');
     this.categoryError = isPublishCategory(this.category) ? '' : '请选择商品类别';
     this.campusError = CAMPUS_OPTIONS.includes(this.campus) ? '' : '请选择所在校区';
     return this.titleError === '' && this.descriptionError === '' && this.priceError === '' &&
       this.categoryError === '' && this.campusError === '';
+  }
+
+  /** Live feedback while typing: an error message, a confirmation, or nothing when empty. */
+  onPriceChanged(value: string): void {
+    this.priceText = value;
+    this.priceError = priceInputError(value);
+    this.priceOk = this.priceError === '' && value.trim() !== '';
   }
 
   addImages(uris: string[]): void {

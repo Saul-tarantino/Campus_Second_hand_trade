@@ -36,12 +36,44 @@ export function isValidSmsCode(code: string): boolean {
   return new RegExp('^\\d{6}$').test(code.trim());
 }
 
+export const MAX_PRODUCT_PRICE: number = 99999;
+
+/** Live feedback for the price field; an empty string means no problem found. */
+export function priceInputError(text: string): string {
+  const value: string = text.trim();
+  if (value === '') {
+    return '';
+  }
+  if (!new RegExp('^\\d*\\.?\\d*$').test(value)) {
+    return '输入不合法：只能填数字和小数点';
+  }
+  if (new RegExp('^\\d*\\.$').test(value) || value === '.') {
+    // Still typing the decimal part.
+    return '';
+  }
+  if (new RegExp('^\\d+\\.\\d{3,}$').test(value)) {
+    return '最多保留两位小数';
+  }
+  if (!new RegExp('^\\d+(\\.\\d{1,2})?$').test(value)) {
+    return '输入不合法';
+  }
+  const amount: number = Number(value);
+  if (amount <= 0) {
+    return '金额必须大于 0';
+  }
+  if (amount > MAX_PRODUCT_PRICE) {
+    return `不能超过 ${MAX_PRODUCT_PRICE} 元`;
+  }
+  return '';
+}
+
 export function isValidPrice(text: string): boolean {
   const value: string = text.trim();
   if (!new RegExp('^\\d+(\\.\\d{1,2})?$').test(value)) {
     return false;
   }
-  return Number(value) > 0;
+  const amount: number = Number(value);
+  return amount > 0 && amount <= MAX_PRODUCT_PRICE;
 }
 
 export function parsePrice(text: string): number {

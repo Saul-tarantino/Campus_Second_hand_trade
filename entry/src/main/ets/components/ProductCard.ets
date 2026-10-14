@@ -9,6 +9,12 @@ export struct ProductCard {
   };
 
   @Local imageFailed: boolean = false;
+  /** Measured card width; the cover image is sized from it so it can never overflow the cell. */
+  @Local cardWidth: number = 0;
+
+  private imageEdge(): number {
+    return this.cardWidth > 0 ? this.cardWidth : 160;
+  }
 
   @Monitor('product')
   resetImage(): void {
@@ -19,8 +25,8 @@ export struct ProductCard {
     Column() {
       if (this.product.images.length > 0 && !this.imageFailed) {
         Image(this.product.images[0])
-          .width('100%')
-          .aspectRatio(1)
+          .width(this.imageEdge())
+          .height(this.imageEdge())
           .objectFit(ImageFit.Cover)
           .borderRadius({ topLeft: 16, topRight: 16 })
           .backgroundColor(COLOR_PAGE_BG)
@@ -30,8 +36,8 @@ export struct ProductCard {
           Image($r('app.media.design_photo')).width(28).height(28);
           Text('暂无图片').fontSize('12fp').fontColor(COLOR_TEXT_TERTIARY);
         }
-        .width('100%')
-        .aspectRatio(1)
+        .width(this.imageEdge())
+        .height(this.imageEdge())
         .justifyContent(FlexAlign.Center)
         .backgroundColor(COLOR_PAGE_BG)
         .borderRadius({ topLeft: 16, topRight: 16 });
@@ -65,6 +71,12 @@ export struct ProductCard {
     .backgroundColor(Color.White)
     .borderRadius(CARD_RADIUS)
     .clip(true)
+    .onAreaChange((_oldValue: Area, newValue: Area) => {
+      const width: number = Number(newValue.width);
+      if (width > 0 && Math.abs(width - this.cardWidth) > 0.5) {
+        this.cardWidth = width;
+      }
+    })
     .onClick(() => this.onCardClick(this.product));
   }
 }

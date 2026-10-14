@@ -3,8 +3,8 @@ import { PublishViewModel } from '../viewmodel/PublishViewModel';
 import { CAMPUS_OPTIONS, CONDITION_OPTIONS, PRODUCT_CATEGORIES, publishCategoryHint } from '../common/MarketOptions';
 import { formatCondition } from '../common/Utils';
 import {
-  CONTROL_RADIUS, COLOR_DIVIDER, COLOR_ERROR, COLOR_PAGE_BG, COLOR_PRIMARY, COLOR_TEXT_PRIMARY,
-  COLOR_TEXT_SECONDARY, COLOR_TEXT_TERTIARY, MAX_PRODUCT_PHOTOS
+  CONTROL_RADIUS, COLOR_DIVIDER, COLOR_ERROR, COLOR_PAGE_BG, COLOR_PRIMARY, COLOR_SUCCESS,
+  COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_TEXT_TERTIARY, MAX_PRODUCT_PHOTOS
 } from '../common/Constants';
 
 @ComponentV2
@@ -44,10 +44,12 @@ export struct PublishProductView {
               .backgroundColor(Color.White).borderRadius(CONTROL_RADIUS)
               .padding({ left: 14, right: 14 })
               .onChange((value: string) => {
-                this.vm.priceText = value;
-                this.vm.priceError = '';
+                this.vm.onPriceChanged(value);
               });
             this.errorText(this.vm.priceError);
+            if (this.vm.priceError === '' && this.vm.priceOk) {
+              Text('金额格式正确').fontSize('12fp').fontColor(COLOR_SUCCESS).width('100%');
+            }
             Text('当面交易时付款').fontSize('12fp').fontColor(COLOR_TEXT_TERTIARY).width('100%');
 
             this.fieldLabel('商品类别');
