@@ -25,6 +25,7 @@ export struct HomeView {
   @Local searchSheetVisible: boolean = false;
   @Local agentSheetVisible: boolean = false;
   @Local adminSheetVisible: boolean = false;
+  @Local refreshing: boolean = false;
   private categories: string[] = HOME_CATEGORIES;
   private feedScroller: Scroller = new Scroller();
   private visibleProductId: string = '';
@@ -75,6 +76,17 @@ export struct HomeView {
           Text('同校好物 · 当面交易').fontSize('12fp').fontColor(COLOR_TEXT_TERTIARY);
         }
         .layoutWeight(1).alignItems(HorizontalAlign.Start);
+        Column({ space: 2 }) {
+          if (this.refreshing) {
+            LoadingProgress().width(20).height(20).color(COLOR_PRIMARY);
+          } else {
+            Image($r('app.media.design_refresh')).width(20).height(20);
+          }
+          Text('刷新').fontSize('12fp').fontColor(COLOR_TEXT_SECONDARY);
+        }
+        .width(52).constraintSize({ minHeight: 44 }).justifyContent(FlexAlign.Center)
+        .backgroundColor(COLOR_PAGE_BG).borderRadius(16).margin({ right: 8 })
+        .onClick(() => this.refreshFeed());
         Column({ space: 2 }) {
           Image($r('app.media.design_bell')).width(20).height(20);
           Text('消息').fontSize('12fp').fontColor(COLOR_TEXT_SECONDARY);
@@ -180,6 +192,23 @@ export struct HomeView {
       }
     }
     .layoutWeight(1).width('100%').padding({ left: PAGE_PADDING, right: PAGE_PADDING, top: 8, bottom: 8 });
+  }
+
+  /** Manual refresh so administrator changes show up without leaving the page. */
+  private async refreshFeed(): Promise<void> {
+    if (this.refreshing) {
+      return;
+    }
+    this.refreshing = true;
+    try {
+      await this.vm.loadFeed(true);
+      this.getUIContext().getPromptAction().showToast({
+        message: this.vm.feedError === '' ? '已刷新' : '刷新失败，请检查网络',
+        duration: 1500
+      });
+    } finally {
+      this.refreshing = false;
+    }
   }
 
   private filteredProducts(): Product[] {
