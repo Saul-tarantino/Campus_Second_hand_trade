@@ -48,10 +48,14 @@ export class BuyerHomeViewModel {
       if (seq !== this.feedSeq) {
         return;
       }
-      // Keep references and the WaterFlow position for an unchanged response.
-      if (JSON.stringify(result) !== JSON.stringify(this.products)) {
+      // Compare only meaningful fields: signed image URLs change on every request.
+      const signature = (list: Product[]): string => JSON.stringify(list.map((item: Product): string =>
+        `${item.id}|${item.title}|${item.price}|${item.status}|${item.campus}|${item.publishTime}|${item.images.length}`));
+      if (signature(result) !== signature(this.products)) {
         this.products = result;
         this.feedRevision += 1;
+      } else {
+        this.products = result;
       }
       this.feedState = result.length > 0 ? LoadState.CONTENT : LoadState.EMPTY;
     } catch (_error) {

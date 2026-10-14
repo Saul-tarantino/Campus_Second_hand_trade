@@ -230,7 +230,7 @@ export struct HomeView {
             }
           });
         }
-      }, (item: Product): string => item.id);
+      }, (item: Product): string => `${item.id}_${this.vm.feedRevision}`);
     }
     .columnsTemplate('1fr 1fr').columnsGap(GRID_GAP).rowsGap(GRID_GAP)
     .layoutWeight(1).width('100%').scrollBar(BarState.Off)
