@@ -26,6 +26,8 @@ export struct HomeView {
   @Local agentSheetVisible: boolean = false;
   @Local adminSheetVisible: boolean = false;
   @Local refreshing: boolean = false;
+  /** Square edge for card images, derived from the measured feed width. */
+  @Local imageSize: number = 0;
   private categories: string[] = HOME_CATEGORIES;
   private feedScroller: Scroller = new Scroller();
   private visibleProductId: string = '';
@@ -229,6 +231,7 @@ export struct HomeView {
         FlowItem() {
           ProductCard({
             product: item,
+            imageSize: this.imageSize,
             onCardClick: (product: Product): void => {
               this.pathStack.pushPathByName(ROUTE_PRODUCT_DETAIL, product.id);
             }
@@ -238,6 +241,15 @@ export struct HomeView {
     }
     .columnsTemplate('1fr 1fr').columnsGap(GRID_GAP).rowsGap(GRID_GAP)
     .layoutWeight(1).width('100%').scrollBar(BarState.Off)
+    .onAreaChange((_oldValue: Area, newValue: Area) => {
+      const width: number = Number(newValue.width);
+      if (width > 0) {
+        const edge: number = (width - GRID_GAP) / 2;
+        if (Math.abs(edge - this.imageSize) > 0.5) {
+          this.imageSize = edge;
+        }
+      }
+    })
     .onScrollIndex((first: number, _last: number) => {
       const items: Product[] = this.filteredProducts();
       if (first >= 0 && first < items.length) {

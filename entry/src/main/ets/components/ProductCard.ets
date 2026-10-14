@@ -5,6 +5,8 @@ import { CARD_RADIUS, FONT_PRODUCT, FONT_PRICE, FONT_META, COLOR_PAGE_BG, COLOR_
 @ComponentV2
 export struct ProductCard {
   @Require @Param product: Product;
+  /** Exact square edge supplied by the feed, where the column width is known. */
+  @Param imageSize: number = 0;
   @Event onCardClick: (product: Product) => void = (_product: Product): void => {
   };
 
@@ -13,6 +15,9 @@ export struct ProductCard {
   @Local cardWidth: number = 0;
 
   private imageEdge(): number {
+    if (this.imageSize > 0) {
+      return this.imageSize;
+    }
     return this.cardWidth > 0 ? this.cardWidth : 160;
   }
 
