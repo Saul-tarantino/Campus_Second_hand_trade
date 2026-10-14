@@ -32,6 +32,7 @@ test('本机业务闭环、越权、幂等、Agent 契约与重启持久化', as
   const config: Config = {
     mode: 'local', host: '127.0.0.1', port: 0, databasePath: join(directory, 'database.sqlite'),
     uploadDir: join(directory, 'uploads'), publicBaseUrl: 'http://127.0.0.1:0',
+    adminPhones: ['13900000000'],
     sessionSecret: 'this-is-a-long-random-test-only-session-secret', devLoginCode: '123456',
     agentBaseUrl: `http://127.0.0.1:${agentAddress.port}`, agentServiceToken: 'agent-service-token-test-a',
     internalAgentToken: 'business-backend-token-test-b', schoolId: 'school_demo'

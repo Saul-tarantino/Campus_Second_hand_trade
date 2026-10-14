@@ -191,6 +191,26 @@ async function route(req: IncomingMessage, res: ServerResponse, store: Store, ri
     store.deleteConversation(conversationMatch[1], user);
     send(res, 200, { ok: true }, rid); return;
   }
+  if (path.startsWith('/api/v1/admin/')) {
+    store.requireAdmin(user);
+    if (method === 'GET' && path === '/api/v1/admin/products') {
+      send(res, 200, store.adminProducts(user, url.searchParams), rid); return;
+    }
+    if (method === 'GET' && path === '/api/v1/admin/transactions') {
+      send(res, 200, store.adminTransactions(user, url.searchParams), rid); return;
+    }
+    const adminProduct = /^\/api\/v1\/admin\/products\/(listing_[a-z0-9_-]{1,64})\/(delist|relist)$/.exec(path);
+    if (method === 'POST' && adminProduct?.[1] && adminProduct[2]) {
+      send(res, 200, adminProduct[2] === 'delist'
+        ? store.adminDelist(adminProduct[1], user) : store.adminRelist(adminProduct[1], user), rid); return;
+    }
+    const adminTrade = /^\/api\/v1\/admin\/transactions\/(trade_[a-f0-9-]{36})\/(cancel|restore)$/.exec(path);
+    if (method === 'POST' && adminTrade?.[1] && adminTrade[2]) {
+      send(res, 200, adminTrade[2] === 'cancel'
+        ? store.adminCancel(adminTrade[1], user) : store.adminRestore(adminTrade[1], user), rid); return;
+    }
+    throw new ApiError(404, 'NOT_FOUND', '接口不存在');
+  }
   throw new ApiError(404, 'NOT_FOUND', '接口不存在');
 }
 

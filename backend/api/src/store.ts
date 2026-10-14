@@ -7,7 +7,7 @@ import { transaction } from './db.js';
 import { ApiError, bodyHash, cursorDecode, cursorEncode, moneyToCents, optionalText, positiveInt, text, tokenHash } from './http.js';
 import { categorySearchSpec, keywordGroups } from './search.js';
 
-type UserRow = { id: string; phone: string; nickname: string; avatar: string; school_id: string };
+type UserRow = { id: string; phone: string; nickname: string; avatar: string; school_id: string; role: string };
 type ProductStatus = 'ACTIVE' | 'SOLD' | 'OFFLINE';
 type TransactionStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COMPLETED' | 'CANCELLED';
 type ProductRow = { id: string; seller_id: string; school_id: string; title: string; description: string; price_cents: number; category: string; condition: string; campus: string; version: string | null; status: ProductStatus; published_at: number };
@@ -120,7 +120,7 @@ export class Store {
   }
 
   user(row: UserRow): Record<string, unknown> {
-    return { id: row.id, nickname: row.nickname, avatar: row.avatar, phone: row.phone };
+    return { id: row.id, nickname: row.nickname, avatar: row.avatar, phone: row.phone, role: row.role };
   }
 
   findUser(id: string): UserRow | undefined {
@@ -141,6 +141,11 @@ export class Store {
         this.db.prepare('INSERT INTO users(id,phone,nickname,avatar,school_id,created_at) VALUES(?,?,?,?,?,?)')
           .run(id, phone, `同学${phone.slice(-4)}`, '', this.config.schoolId, now);
         row = this.findUser(id)!;
+      }
+      const shouldBeAdmin = this.config.adminPhones.includes(phone);
+      if (shouldBeAdmin !== (row.role === 'admin')) {
+        this.db.prepare('UPDATE users SET role=? WHERE id=?').run(shouldBeAdmin ? 'admin' : 'user', row.id);
+        row = this.findUser(row.id)!;
       }
       const token = randomBytes(32).toString('base64url');
       const expiresAt = now + 7 * 86_400_000;
@@ -493,6 +498,123 @@ export class Store {
       this.db.prepare('DELETE FROM agent_conversations WHERE id=?').run(row.id);
     }
     return stale.length;
+  }
+
+  isAdmin(user: UserRow): boolean {
+    return user.role === 'admin';
+  }
+
+  requireAdmin(user: UserRow): void {
+    if (user.role !== 'admin') throw new ApiError(403, 'FORBIDDEN', '需要管理员权限');
+  }
+
+  /** Every product of the school, including occupied, offline and sold ones. */
+  adminProducts(user: UserRow, params: URLSearchParams): { items: unknown[]; nextCursor: string | null } {
+    this.requireAdmin(user);
+    const limit = params.has('limit') ? positiveInt(params.get('limit'), 'limit', 100) : 50;
+    const cursor = cursorDecode(params.get('cursor'));
+    const where = ['school_id=?'];
+    const args: (string | number)[] = [user.school_id];
+    const status = params.get('status');
+    if (status) { where.push('status=?'); args.push(text(status, 'status', 1, 20)); }
+    if (cursor) { where.push('(published_at<? OR (published_at=? AND id<?))'); args.push(cursor[0], cursor[0], cursor[1]); }
+    const rows = this.db.prepare(`SELECT * FROM products WHERE ${where.join(' AND ')} ORDER BY published_at DESC,id DESC LIMIT ?`)
+      .all(...args, limit + 1) as ProductRow[];
+    const slice = rows.slice(0, limit);
+    const items = slice.map(row => ({
+      ...this.product(row),
+      seller: this.user(this.findUser(row.seller_id)!),
+      activeTransactionCount: (this.db.prepare("SELECT COUNT(*) AS n FROM transactions WHERE product_id=? AND status IN ('PENDING','ACCEPTED')")
+        .get(row.id) as { n: number }).n
+    }));
+    const last = slice.at(-1);
+    return { items, nextCursor: rows.length > limit && last ? cursorEncode(last.published_at, last.id) : null };
+  }
+
+  /** Every transaction of the school, any status. */
+  adminTransactions(user: UserRow, params: URLSearchParams): { items: unknown[]; nextCursor: string | null } {
+    this.requireAdmin(user);
+    const limit = params.has('limit') ? positiveInt(params.get('limit'), 'limit', 100) : 50;
+    const cursor = cursorDecode(params.get('cursor'));
+    const where = ['school_id=?'];
+    const args: (string | number)[] = [user.school_id];
+    const status = params.get('status');
+    if (status) { where.push('status=?'); args.push(text(status, 'status', 1, 20)); }
+    if (cursor) { where.push('(create_time<? OR (create_time=? AND id<?))'); args.push(cursor[0], cursor[0], cursor[1]); }
+    const rows = this.db.prepare(`SELECT * FROM transactions WHERE ${where.join(' AND ')} ORDER BY create_time DESC,id DESC LIMIT ?`)
+      .all(...args, limit + 1) as TransactionRow[];
+    const slice = rows.slice(0, limit);
+    const items = slice.map(row => ({ transaction: this.transactionView(row),
+      product: this.product(this.findProduct(row.product_id)!),
+      buyer: this.user(this.findUser(row.buyer_id)!), seller: this.user(this.findUser(row.seller_id)!) }));
+    const last = slice.at(-1);
+    return { items, nextCursor: rows.length > limit && last ? cursorEncode(last.create_time, last.id) : null };
+  }
+
+  private scopedTransaction(id: string, schoolId: string): TransactionRow {
+    const row = this.db.prepare('SELECT * FROM transactions WHERE id=? AND school_id=?').get(id, schoolId) as TransactionRow | undefined;
+    if (!row) throw new ApiError(404, 'NOT_FOUND', '交易不存在');
+    return row;
+  }
+
+  /** Administrator delist: no ownership requirement, but an occupied listing must be released first. */
+  adminDelist(id: string, user: UserRow): Record<string, unknown> {
+    this.requireAdmin(user);
+    return transaction(this.db, () => {
+      const row = this.findProduct(id);
+      if (!row || row.school_id !== user.school_id) throw new ApiError(404, 'NOT_FOUND', '商品不存在');
+      if (row.status === 'OFFLINE') return this.product(row);
+      const occupied = this.db.prepare("SELECT 1 FROM transactions WHERE product_id=? AND status IN ('PENDING','ACCEPTED')").get(id);
+      if (occupied) throw new ApiError(409, 'PRODUCT_OCCUPIED', '商品有进行中的交易，请先取消交易');
+      const update = this.db.prepare("UPDATE products SET status='OFFLINE' WHERE id=? AND status IN ('ACTIVE','SOLD')").run(id);
+      if (update.changes !== 1) throw new ApiError(409, 'INVALID_STATUS', '商品状态已变化');
+      return this.product(this.findProduct(id)!);
+    });
+  }
+
+  adminRelist(id: string, user: UserRow): Record<string, unknown> {
+    this.requireAdmin(user);
+    return transaction(this.db, () => {
+      const row = this.findProduct(id);
+      if (!row || row.school_id !== user.school_id) throw new ApiError(404, 'NOT_FOUND', '商品不存在');
+      if (row.status === 'ACTIVE') return this.product(row);
+      const occupied = this.db.prepare("SELECT 1 FROM transactions WHERE product_id=? AND status IN ('PENDING','ACCEPTED')").get(id);
+      if (occupied) throw new ApiError(409, 'PRODUCT_OCCUPIED', '商品有进行中的交易，请先取消交易');
+      const update = this.db.prepare("UPDATE products SET status='ACTIVE' WHERE id=? AND status='OFFLINE'").run(id);
+      if (update.changes !== 1) throw new ApiError(409, 'INVALID_STATUS', '商品状态已变化');
+      return this.product(this.findProduct(id)!);
+    });
+  }
+
+  /** Administrator cancel: releases the product back to sellable. */
+  adminCancel(id: string, user: UserRow): Record<string, unknown> {
+    this.requireAdmin(user);
+    return transaction(this.db, () => {
+      const row = this.scopedTransaction(id, user.school_id);
+      if (row.status !== 'PENDING' && row.status !== 'ACCEPTED') throw new ApiError(409, 'INVALID_STATUS', '交易已结束，无法取消');
+      const cancelled = this.db.prepare("UPDATE transactions SET status='CANCELLED' WHERE id=? AND status IN ('PENDING','ACCEPTED')").run(id);
+      if (cancelled.changes !== 1) throw new ApiError(409, 'INVALID_STATUS', '交易状态已变化');
+      return this.transactionView(this.scopedTransaction(id, user.school_id));
+    });
+  }
+
+  /** Undo a terminal transaction: the deal becomes active again and the product sellable. */
+  adminRestore(id: string, user: UserRow): Record<string, unknown> {
+    this.requireAdmin(user);
+    return transaction(this.db, () => {
+      const row = this.scopedTransaction(id, user.school_id);
+      if (row.status === 'COMPLETED') {
+        this.db.prepare("UPDATE transactions SET status='ACCEPTED' WHERE id=? AND status='COMPLETED'").run(id);
+        this.db.prepare("UPDATE products SET status='ACTIVE' WHERE id=? AND status='SOLD'").run(row.product_id);
+      } else if (row.status === 'CANCELLED' || row.status === 'REJECTED') {
+        const busy = this.db.prepare("SELECT 1 FROM transactions WHERE product_id=? AND id<>? AND status IN ('PENDING','ACCEPTED')").get(row.product_id, id);
+        if (busy) throw new ApiError(409, 'PRODUCT_OCCUPIED', '该商品已有新的进行中交易，无法恢复这笔交易');
+        this.db.prepare("UPDATE transactions SET status='PENDING' WHERE id=? AND status IN ('CANCELLED','REJECTED')").run(id);
+      } else {
+        throw new ApiError(409, 'INVALID_STATUS', '该交易处于进行中，无需恢复');
+      }
+      return this.transactionView(this.scopedTransaction(id, user.school_id));
+    });
   }
 
   internalUser(userId: string, schoolId: string): UserRow {

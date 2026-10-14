@@ -10,7 +10,8 @@ function fixture() {
     mode: 'local', host: '127.0.0.1', port: 0, databasePath: ':memory:', uploadDir: tmpdir(),
     publicBaseUrl: 'http://127.0.0.1', sessionSecret: 'test-search-secret-longer-than-thirty-two-characters',
     devLoginCode: '123456', agentBaseUrl: 'http://127.0.0.1:3000',
-    agentServiceToken: 'test-search-agent-service-token', internalAgentToken: 'test-search-internal-token', schoolId: 'school_demo'
+    agentServiceToken: 'test-search-agent-service-token', internalAgentToken: 'test-search-internal-token', schoolId: 'school_demo',
+    adminPhones: []
   };
   const db = openDatabase(config);
   const store = new Store(db, config);

@@ -12,7 +12,7 @@ export function openDatabase(config: Config): DatabaseSync {
   return db;
 }
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 function migrate(db: DatabaseSync): void {
   const version = db.prepare('PRAGMA user_version').get() as { user_version: number };
@@ -20,7 +20,19 @@ function migrate(db: DatabaseSync): void {
   if (version.user_version >= SCHEMA_VERSION) return;
   if (version.user_version === 0) createInitialSchema(db);
   if (version.user_version < 2) upgradeToV2(db);
-  upgradeToV3(db);
+  if (version.user_version < 3) upgradeToV3(db);
+  upgradeToV4(db);
+}
+
+/** Adds the account role that grants administrator access. */
+function upgradeToV4(db: DatabaseSync): void {
+  db.exec(`
+    BEGIN IMMEDIATE;
+    ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user';
+    CREATE INDEX users_role ON users(role);
+    PRAGMA user_version=4;
+    COMMIT;
+  `);
 }
 
 function createInitialSchema(db: DatabaseSync): void {

@@ -4,6 +4,7 @@ export interface Config {
   mode: 'local'; host: string; port: number; databasePath: string; uploadDir: string;
   publicBaseUrl: string; sessionSecret: string; devLoginCode: string;
   agentBaseUrl: string; agentServiceToken: string; internalAgentToken: string; schoolId: string;
+  adminPhones: string[];
 }
 
 function required(env: NodeJS.ProcessEnv, key: string): string {
@@ -38,6 +39,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databasePath: resolve(required(env, 'DATABASE_PATH')),
     uploadDir: resolve(required(env, 'UPLOAD_DIR')),
     publicBaseUrl, sessionSecret, devLoginCode, agentBaseUrl, agentServiceToken, internalAgentToken,
-    schoolId: env.AGENT_SCHOOL_ID?.trim() || 'school_demo'
+    schoolId: env.AGENT_SCHOOL_ID?.trim() || 'school_demo',
+    adminPhones: (env.ADMIN_PHONES ?? '').split(',').map(value => value.trim()).filter(value => /^1\d{10}$/.test(value))
   };
 }
