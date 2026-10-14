@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AgentResponse, SearchFilters, UserContext } from "../contracts/index.js";
+import type { AgentResponse, AgentSessionState, SearchFilters, UserContext } from "../contracts/index.js";
 import { AppError } from "../errors/index.js";
 
 export interface SessionRecord {
@@ -17,6 +17,7 @@ export interface SessionRecord {
 export interface SessionStore {
   create(user: UserContext): SessionRecord;
   get(sessionId: string, user: UserContext): SessionRecord;
+  restore(sessionId: string, user: UserContext, state: AgentSessionState): SessionRecord;
   save(record: SessionRecord): void;
   claim(record: SessionRecord): void;
   release(record: SessionRecord): void;
@@ -58,6 +59,24 @@ export class MemorySessionStore implements SessionStore {
       throw new AppError("SESSION_NOT_FOUND", "会话不存在或已过期");
     }
     if (!sameUser(record.owner, user)) throw new AppError("SESSION_FORBIDDEN", "不能读取其他用户的会话");
+    return record;
+  }
+
+  /** Rebuilds a session from state persisted by the business API, e.g. after an Agent restart. */
+  restore(sessionId: string, user: UserContext, state: AgentSessionState): SessionRecord {
+    const now = Date.now();
+    const record: SessionRecord = {
+      sessionId,
+      owner: { ...user },
+      messages: [],
+      filters: { ...state.filters },
+      displayedListingIds: [...state.displayedListingIds],
+      searchPage: state.searchPage,
+      createdAt: now,
+      updatedAt: now,
+      busy: false,
+    };
+    this.sessions.set(sessionId, record);
     return record;
   }
 

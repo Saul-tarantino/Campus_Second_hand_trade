@@ -12,14 +12,15 @@ export function openDatabase(config: Config): DatabaseSync {
   return db;
 }
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 function migrate(db: DatabaseSync): void {
   const version = db.prepare('PRAGMA user_version').get() as { user_version: number };
   if (version.user_version > SCHEMA_VERSION) throw new Error('Database schema is newer than this API');
   if (version.user_version >= SCHEMA_VERSION) return;
   if (version.user_version === 0) createInitialSchema(db);
-  upgradeToV2(db);
+  if (version.user_version < 2) upgradeToV2(db);
+  upgradeToV3(db);
 }
 
 function createInitialSchema(db: DatabaseSync): void {
@@ -124,6 +125,39 @@ function upgradeToV2(db: DatabaseSync): void {
     if (violations.length > 0) throw new Error(`Database migration left ${violations.length} foreign key violation(s)`);
   } finally {
     db.exec('PRAGMA legacy_alter_table=OFF; PRAGMA foreign_keys=ON;');
+  }
+}
+
+/** Keeps Agent conversations (transcript plus resumable state) instead of only the ownership map. */
+function upgradeToV3(db: DatabaseSync): void {
+  db.exec('PRAGMA foreign_keys=OFF;');
+  try {
+    db.exec(`
+      BEGIN IMMEDIATE;
+      CREATE TABLE agent_conversations (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), school_id TEXT NOT NULL,
+        title TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+        filters_json TEXT NOT NULL DEFAULT '{}', displayed_ids_json TEXT NOT NULL DEFAULT '[]',
+        search_page INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE INDEX agent_conversations_user ON agent_conversations(user_id, updated_at DESC, id DESC);
+      CREATE TABLE agent_conversation_messages (
+        id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES agent_conversations(id),
+        role TEXT NOT NULL CHECK(role IN ('user','assistant')), content TEXT NOT NULL,
+        recommendations_json TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL
+      );
+      CREATE INDEX agent_conversation_messages_feed ON agent_conversation_messages(conversation_id, created_at, id);
+      INSERT INTO agent_conversations(id, user_id, school_id, title, created_at, updated_at)
+        SELECT s.session_id, s.user_id, u.school_id, '历史对话', s.created_at, s.created_at
+        FROM agent_sessions s JOIN users u ON u.id = s.user_id;
+      DROP TABLE agent_sessions;
+      PRAGMA user_version=3;
+      COMMIT;
+    `);
+    const violations = db.prepare('PRAGMA foreign_key_check').all();
+    if (violations.length > 0) throw new Error(`Database migration left ${violations.length} foreign key violation(s)`);
+  } finally {
+    db.exec('PRAGMA foreign_keys=ON;');
   }
 }
 

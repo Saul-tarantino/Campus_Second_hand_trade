@@ -1,18 +1,19 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
-import type { AgentRequest, ErrorResponse, UserContext } from "./contracts/index.js";
+import type { AgentRequest, AgentSessionState, ErrorResponse, SearchFilters, UserContext } from "./contracts/index.js";
 import { AppError, asAppError } from "./errors/index.js";
 import type { AppConfig } from "./config/index.js";
 import { loadConfig } from "./config/index.js";
 import { MockBusinessClient } from "./clients/mock.js";
 import { HttpBusinessClient } from "./clients/http.js";
 import type { BusinessReadClient } from "./clients/types.js";
-import { MemorySessionStore, type SessionStore } from "./sessions/store.js";
+import { MemorySessionStore, type SessionRecord, type SessionStore } from "./sessions/store.js";
 import { runAgentTurn } from "./agent/service.js";
 
 interface ChatBody {
   requestId?: unknown;
   sessionId?: unknown;
   message?: unknown;
+  state?: unknown;
 }
 
 export interface BuildAppOptions {
@@ -42,7 +43,23 @@ function parseChatBody(body: unknown, maxMessageChars: number): AgentRequest {
   if (value.sessionId !== null && value.sessionId !== undefined && (typeof value.sessionId !== "string" || !/^session_[a-zA-Z0-9_-]{1,100}$/u.test(value.sessionId))) throw new AppError("BAD_REQUEST", "sessionId 格式不合法");
   if (typeof value.message !== "string" || value.message.trim().length === 0) throw new AppError("BAD_REQUEST", "message 不能为空");
   if (value.message.length > maxMessageChars) throw new AppError("BAD_REQUEST", `message 不能超过 ${maxMessageChars} 个字符`);
-  return { requestId: value.requestId, sessionId: value.sessionId ?? null, message: value.message.trim() };
+  const state = parseSessionState(value.state);
+  return { requestId: value.requestId, sessionId: value.sessionId ?? null, message: value.message.trim(),
+    ...(state === undefined ? {} : { state }) };
+}
+
+/** Tolerant reader for state echoed back by the business API. */
+function parseSessionState(value: unknown): AgentSessionState | undefined {
+  if (value === null || value === undefined || typeof value !== "object") return undefined;
+  const raw = value as { filters?: unknown; displayedListingIds?: unknown; searchPage?: unknown };
+  const filters = raw.filters !== null && typeof raw.filters === "object" && !Array.isArray(raw.filters)
+    ? raw.filters as SearchFilters : {};
+  const ids = Array.isArray(raw.displayedListingIds)
+    ? raw.displayedListingIds.filter((item): item is string => typeof item === "string" && /^listing_[a-z0-9_-]{1,64}$/u.test(item)).slice(0, 20)
+    : [];
+  const page = typeof raw.searchPage === "number" && Number.isSafeInteger(raw.searchPage) && raw.searchPage >= 1 && raw.searchPage <= 1000
+    ? raw.searchPage : 1;
+  return { filters, displayedListingIds: ids, searchPage: page };
 }
 
 function errorResponse(requestId: string, error: unknown): { statusCode: number; body: ErrorResponse } {
@@ -79,7 +96,18 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     const cached = sessionStore.readIdempotentResponse(body.requestId, user);
     if (cached) return reply.code(200).send(cached);
 
-    const session = body.sessionId ? sessionStore.get(body.sessionId, user) : sessionStore.create(user);
+    let session: SessionRecord;
+    if (body.sessionId) {
+      try {
+        session = sessionStore.get(body.sessionId, user);
+      } catch (error) {
+        // The Agent may have restarted; rebuild the conversation from persisted state.
+        if (body.state === undefined || !(error instanceof AppError) || error.code !== "SESSION_NOT_FOUND") throw error;
+        session = sessionStore.restore(body.sessionId, user, body.state);
+      }
+    } else {
+      session = sessionStore.create(user);
+    }
     sessionStore.claim(session);
     try {
       const result = await runAgentTurn(body.message, {
@@ -95,8 +123,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       session.displayedListingIds = result.displayedListingIds;
       session.searchPage = result.searchPage;
       sessionStore.save(session);
-      sessionStore.saveIdempotentResponse(body.requestId, user, result.response);
-      return reply.code(200).send(result.response);
+      const response = { ...result.response, state: {
+        filters: result.filters, displayedListingIds: result.displayedListingIds, searchPage: result.searchPage } };
+      sessionStore.saveIdempotentResponse(body.requestId, user, response);
+      return reply.code(200).send(response);
     } finally {
       sessionStore.release(session);
     }

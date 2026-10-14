@@ -38,7 +38,7 @@ async function proxyAgent(req: IncomingMessage, store: Store, user: ReturnType<S
   const agentRequestId = text(body.requestId, 'requestId', 1, 100);
   const message = text(body.message, 'message', 1, 2000);
   const sessionId = body.sessionId === null || body.sessionId === undefined ? null : text(body.sessionId, 'sessionId', 1, 150);
-  if (sessionId) store.agentSessionOwned(sessionId, user);
+  const resumeState = sessionId === null ? undefined : store.conversationState(sessionId, user);
   let response: Response;
   try {
     response = await fetch(`${store.config.agentBaseUrl}/internal/agent/chat`, {
@@ -49,7 +49,8 @@ async function proxyAgent(req: IncomingMessage, store: Store, user: ReturnType<S
         'x-user-id': user.id,
         'x-school-id': user.school_id
       },
-      body: JSON.stringify({ requestId: agentRequestId, sessionId, message }),
+      body: JSON.stringify({ requestId: agentRequestId, sessionId, message,
+        ...(resumeState === undefined ? {} : { state: resumeState }) }),
       signal: AbortSignal.timeout(75_000)
     });
   } catch (error) {
@@ -77,7 +78,12 @@ async function proxyAgent(req: IncomingMessage, store: Store, user: ReturnType<S
     throw new ApiError(502, 'AGENT_BAD_RESPONSE', 'Agent 响应字段错误', true);
   }
   if (sessionId && sessionId !== value.sessionId) throw new ApiError(502, 'AGENT_BAD_RESPONSE', 'Agent 会话 ID 异常', true);
-  store.rememberAgentSession(value.sessionId, user);
+  store.recordAgentTurn({
+    sessionId: value.sessionId, user, message,
+    reply: typeof value.reply === 'string' ? value.reply : '',
+    recommendations: Array.isArray(value.recommendations) ? value.recommendations : [],
+    state: value.state !== null && typeof value.state === 'object' ? value.state as Record<string, unknown> : undefined
+  });
   return { status: 200, body: value };
 }
 
@@ -173,6 +179,17 @@ async function route(req: IncomingMessage, res: ServerResponse, store: Store, ri
   if (method === 'POST' && path === '/api/agent/chat') {
     const outcome = await proxyAgent(req, store, user, await readJson(req), rid);
     send(res, outcome.status, outcome.body, rid); return;
+  }
+  if (method === 'GET' && path === '/api/v1/agent/conversations') {
+    send(res, 200, { items: store.listConversations(user) }, rid); return;
+  }
+  const conversationMatch = /^\/api\/v1\/agent\/conversations\/(session_[a-zA-Z0-9_-]{1,100})$/.exec(path);
+  if (method === 'GET' && conversationMatch?.[1]) {
+    send(res, 200, store.conversationDetail(conversationMatch[1], user), rid); return;
+  }
+  if (method === 'DELETE' && conversationMatch?.[1]) {
+    store.deleteConversation(conversationMatch[1], user);
+    send(res, 200, { ok: true }, rid); return;
   }
   throw new ApiError(404, 'NOT_FOUND', '接口不存在');
 }

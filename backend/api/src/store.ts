@@ -14,11 +14,39 @@ type ProductRow = { id: string; seller_id: string; school_id: string; title: str
 type TransactionRow = { id: string; product_id: string; buyer_id: string; seller_id: string; school_id: string; create_time: number; status: TransactionStatus; price_cents: number; title_snapshot: string };
 type MessageRow = { id: string; transaction_id: string; sender_id: string; content: string; send_time: number };
 type ImageRow = { id: string; owner_id: string; product_id: string | null; mime: string; extension: string; size_bytes: number };
+type ConversationRow = { id: string; user_id: string; school_id: string; title: string; created_at: number; updated_at: number; filters_json: string; displayed_ids_json: string; search_page: number };
+type ConversationMessageRow = { id: string; conversation_id: string; role: 'user' | 'assistant'; content: string; recommendations_json: string; created_at: number };
 
 const productIdPattern = /^listing_[a-z0-9_-]{1,64}$/;
 const conditions = ['new', 'like_new', 'good', 'fair', 'unknown'];
 const MAX_FILTER_VALUES = 40;
 const MAX_PRICE_FILTERS = 8;
+const MAX_CONVERSATIONS = 5;
+const MAX_TITLE_CHARS = 20;
+
+function conversationTitle(message: string): string {
+  const cleaned = message.trim().replace(/\s+/gu, ' ');
+  if (cleaned === '') return '新对话';
+  return cleaned.length > MAX_TITLE_CHARS ? `${cleaned.slice(0, MAX_TITLE_CHARS)}…` : cleaned;
+}
+
+function safeFilters(raw: string): Record<string, unknown> {
+  try {
+    const value: unknown = JSON.parse(raw);
+    return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  } catch { return {}; }
+}
+
+function safeIdList(raw: string): string[] {
+  try {
+    const value: unknown = JSON.parse(raw);
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string').slice(0, 20) : [];
+  } catch { return []; }
+}
+
+function safePage(value: unknown): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 && value <= 1000 ? value : 1;
+}
 
 function multiValues(params: URLSearchParams, name: string): string[] {
   const values = params.getAll(name).flatMap(value => value.split(',')).map(value => value.trim()).filter(value => value !== '');
@@ -380,16 +408,91 @@ export class Store {
     });
   }
 
-  agentSessionOwned(sessionId: string, user: UserRow): void {
-    const row = this.db.prepare('SELECT user_id FROM agent_sessions WHERE session_id=?').get(sessionId) as { user_id: string } | undefined;
-    if (!row) throw new ApiError(404, 'SESSION_NOT_FOUND', 'Agent 会话不存在');
-    if (row.user_id !== user.id) throw new ApiError(403, 'SESSION_FORBIDDEN', '不能使用其他用户的 Agent 会话');
+  private conversationOwned(sessionId: string, user: UserRow): ConversationRow {
+    const row = this.db.prepare('SELECT * FROM agent_conversations WHERE id=?').get(sessionId) as ConversationRow | undefined;
+    if (!row) throw new ApiError(404, 'SESSION_NOT_FOUND', '对话不存在或已删除');
+    if (row.user_id !== user.id) throw new ApiError(403, 'SESSION_FORBIDDEN', '不能访问其他用户的对话');
+    return row;
   }
 
-  rememberAgentSession(sessionId: string, user: UserRow): void {
-    const row = this.db.prepare('SELECT user_id FROM agent_sessions WHERE session_id=?').get(sessionId) as { user_id: string } | undefined;
-    if (row && row.user_id !== user.id) throw new ApiError(403, 'SESSION_FORBIDDEN', 'Agent 会话归属冲突');
-    if (!row) this.db.prepare('INSERT INTO agent_sessions VALUES(?,?,?)').run(sessionId, user.id, Date.now());
+  /** Newest activity first, capped at the retention limit. */
+  listConversations(user: UserRow): Record<string, unknown>[] {
+    const rows = this.db.prepare(`SELECT * FROM agent_conversations WHERE user_id=?
+      ORDER BY updated_at DESC, id DESC LIMIT ?`).all(user.id, MAX_CONVERSATIONS) as ConversationRow[];
+    return rows.map(row => {
+      const last = this.db.prepare(`SELECT role, content FROM agent_conversation_messages
+        WHERE conversation_id=? ORDER BY created_at DESC, id DESC LIMIT 1`).get(row.id) as { role: string; content: string } | undefined;
+      const count = (this.db.prepare('SELECT COUNT(*) AS n FROM agent_conversation_messages WHERE conversation_id=?')
+        .get(row.id) as { n: number }).n;
+      return {
+        sessionId: row.id, title: row.title, createdAt: row.created_at, updatedAt: row.updated_at,
+        messageCount: count,
+        ...(last ? { lastMessageRole: last.role, lastMessage: last.content } : {})
+      };
+    });
+  }
+
+  conversationDetail(sessionId: string, user: UserRow): Record<string, unknown> {
+    const row = this.conversationOwned(sessionId, user);
+    const rows = this.db.prepare(`SELECT * FROM agent_conversation_messages WHERE conversation_id=?
+      ORDER BY created_at, id`).all(sessionId) as ConversationMessageRow[];
+    return {
+      conversation: { sessionId: row.id, title: row.title, createdAt: row.created_at, updatedAt: row.updated_at },
+      messages: rows.map(item => ({
+        id: item.id, role: item.role, content: item.content, createdAt: item.created_at,
+        recommendations: item.role === 'assistant' ? safeIdList(item.recommendations_json) : []
+      }))
+    };
+  }
+
+  deleteConversation(sessionId: string, user: UserRow): void {
+    transaction(this.db, () => {
+      this.conversationOwned(sessionId, user);
+      this.db.prepare('DELETE FROM agent_conversation_messages WHERE conversation_id=?').run(sessionId);
+      this.db.prepare('DELETE FROM agent_conversations WHERE id=?').run(sessionId);
+    });
+  }
+
+  /** Resumable state handed to the Agent when it no longer holds the session in memory. */
+  conversationState(sessionId: string, user: UserRow): Record<string, unknown> {
+    const row = this.conversationOwned(sessionId, user);
+    return { filters: safeFilters(row.filters_json), displayedListingIds: safeIdList(row.displayed_ids_json), searchPage: safePage(row.search_page) };
+  }
+
+  recordAgentTurn(input: { sessionId: string; user: UserRow; message: string; reply: string;
+    recommendations: unknown[]; state?: Record<string, unknown> | undefined }): void {
+    const now = Date.now();
+    transaction(this.db, () => {
+      const existing = this.db.prepare('SELECT * FROM agent_conversations WHERE id=?').get(input.sessionId) as ConversationRow | undefined;
+      if (existing && existing.user_id !== input.user.id) throw new ApiError(403, 'SESSION_FORBIDDEN', 'Agent 会话归属冲突');
+      if (existing) {
+        this.db.prepare('UPDATE agent_conversations SET updated_at=? WHERE id=?').run(now, input.sessionId);
+      } else {
+        this.db.prepare(`INSERT INTO agent_conversations(id,user_id,school_id,title,created_at,updated_at)
+          VALUES(?,?,?,?,?,?)`).run(input.sessionId, input.user.id, input.user.school_id, conversationTitle(input.message), now, now);
+      }
+      const insert = this.db.prepare(`INSERT INTO agent_conversation_messages(id,conversation_id,role,content,recommendations_json,created_at)
+        VALUES(?,?,?,?,?,?)`);
+      insert.run(`amsg_${randomUUID()}`, input.sessionId, 'user', input.message, '[]', now);
+      insert.run(`amsg_${randomUUID()}`, input.sessionId, 'assistant', input.reply, JSON.stringify(input.recommendations.slice(0, 10)), now + 1);
+      if (input.state) {
+        this.db.prepare('UPDATE agent_conversations SET filters_json=?, displayed_ids_json=?, search_page=? WHERE id=?')
+          .run(JSON.stringify(input.state.filters ?? {}), JSON.stringify(input.state.displayedListingIds ?? []),
+            safePage(input.state.searchPage), input.sessionId);
+      }
+      this.pruneConversations(input.user);
+    });
+  }
+
+  /** Retention limit: the least recently used conversations are removed with their messages. */
+  pruneConversations(user: UserRow): number {
+    const stale = this.db.prepare(`SELECT id FROM agent_conversations WHERE user_id=?
+      ORDER BY updated_at DESC, id DESC LIMIT -1 OFFSET ?`).all(user.id, MAX_CONVERSATIONS) as { id: string }[];
+    for (const row of stale) {
+      this.db.prepare('DELETE FROM agent_conversation_messages WHERE conversation_id=?').run(row.id);
+      this.db.prepare('DELETE FROM agent_conversations WHERE id=?').run(row.id);
+    }
+    return stale.length;
   }
 
   internalUser(userId: string, schoolId: string): UserRow {

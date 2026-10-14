@@ -4,6 +4,14 @@ export interface AgentRequest {
   requestId: string;
   sessionId: string | null;
   message: string;
+  state?: AgentSessionState;
+}
+
+/** Enough state to continue a conversation the Agent no longer holds in memory. */
+export interface AgentSessionState {
+  filters: SearchFilters;
+  displayedListingIds: string[];
+  searchPage: number;
 }
 
 export interface UserContext {
@@ -82,6 +90,7 @@ export interface AgentResponse {
   reply: string;
   recommendations: Recommendation[];
   relaxedConditions: string[];
+  state?: AgentSessionState;
 }
 
 export interface ErrorResponse {
