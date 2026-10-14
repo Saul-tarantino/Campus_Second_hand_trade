@@ -27,7 +27,7 @@ export struct ProductCard {
         Image(this.product.images[0])
           .width(this.imageEdge())
           .height(this.imageEdge())
-          .objectFit(ImageFit.Cover)
+          .objectFit(ImageFit.Contain)
           .borderRadius({ topLeft: 16, topRight: 16 })
           .backgroundColor(COLOR_PAGE_BG)
           .onError(() => this.imageFailed = true);
