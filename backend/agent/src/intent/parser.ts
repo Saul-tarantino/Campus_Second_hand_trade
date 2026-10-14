@@ -27,11 +27,17 @@ const CATEGORY_ALIASES: Array<[string, string[]]> = [
 const CAMPUS_ALIASES = ["江湾校区", "邯郸校区", "张江校区", "枫林校区", "江湾", "邯郸", "张江", "枫林"];
 
 const KEYWORD_ALIASES = [
-  ["高数", "高等数学", "微积分"],
+  ["数学", "高数", "高等数学", "微积分"],
   ["英语", "英文", "english"],
   ["书", "书籍", "课本", "教材", "book", "books", "textbook", "textbooks"],
   ["键盘", "keyboard"], ["鼠标", "mouse"], ["耳机", "headphone", "headphones", "earphone", "earphones"],
   ["显示器", "monitor"], ["自行车", "单车", "bicycle", "bike"],
+  ["线代", "线性代数", "概率论", "概率统计", "数理统计"],
+  ["物理", "大学物理", "physics"], ["化学", "chemistry"],
+  ["电脑", "笔记本", "笔记本电脑", "laptop", "notebook"], ["手机", "mobile", "phone"],
+  ["平板", "平板电脑", "tablet"], ["台灯", "护眼灯"],
+  ["充电器", "充电头", "charger"], ["音箱", "音响", "speaker"],
+  ["水杯", "保温杯"], ["雨伞", "伞"], ["球拍", "羽毛球拍", "网球拍"],
 ];
 
 function mentionsAlias(text: string, alias: string): boolean {
@@ -54,8 +60,31 @@ function canonicalKeyword(text: string): string {
 
 /** Only allow a model translation when it is grounded in known user-mentioned equivalents. */
 export function isGroundedKeyword(message: string, keyword: string): boolean {
-  const normalized = canonicalKeyword(keyword);
-  return normalized.length > 0 && canonicalKeyword(message).includes(normalized);
+  const value = keyword.trim();
+  if (value.length === 0) return false;
+  const normalized = canonicalKeyword(value);
+  if (normalized.length > 0 && canonicalKeyword(message).includes(normalized)) return true;
+  // Relaxed: a longer wording still counts when it shares a term with the request,
+  // e.g. "科学计算器" for "计算器". Unrelated words are still rejected.
+  return isPlainProductWord(value) && overlapsMessage(message, value);
+}
+
+const GENERIC_WORDS = ["商品", "东西", "物品", "闲置", "二手", "好物", "推荐", "便宜"];
+
+function overlapsMessage(message: string, keyword: string): boolean {
+  const value = keyword.toLowerCase();
+  const text = message.toLowerCase();
+  for (let index = 0; index + 2 <= value.length; index += 1) {
+    if (text.includes(value.slice(index, index + 2))) return true;
+  }
+  return false;
+}
+
+function isPlainProductWord(keyword: string): boolean {
+  const value = keyword.trim();
+  if (value.length === 0 || value.length > 20) return false;
+  if (/[\s，,。；;！!？?、:：/\\|()（）\[\]{}<>《》"'“”]/u.test(value)) return false;
+  return !GENERIC_WORDS.includes(value);
 }
 
 export function hasSearchRequest(message: string): boolean {

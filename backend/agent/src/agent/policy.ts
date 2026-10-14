@@ -26,6 +26,11 @@ export const REFUSAL_REPLY = "我只能帮你查找、筛选、查看和比较�
 export const UNSUPPORTED_REPLY = "我不能执行购买、付款、预约或联系卖家。你可以让我继续查询商品，再通过平台正式业务流程完成交易。";
 export const HELP_REPLY = "我可以查找本校二手商品，按预算、成色、版本和校区筛选，并查看或比较已展示的商品。你可以说‘找50元以内的高数教材’，或在找到商品后问‘第二个怎么样’。";
 
+/** True when the turn asks for a transaction action, whatever else it also contains. */
+export function mentionsTransactionAction(message: string): boolean {
+  return /直接买|买下来|买下|下单|付款|支付|预约|联系(?:一下)?卖家|发布商品|修改商品|删除商品/u.test(message);
+}
+
 export function emptyPlan(action: BusinessAction): TurnPlan {
   return { action, changes: {}, positions: [], page: 1 };
 }
@@ -42,6 +47,8 @@ export function scopeDecision(message: string): "unsupported" | "out_of_scope" |
       if (/(?:讲解|介绍|讲述|关于|讨论|研究|流程|教程|书名|标题|叫做)/u.test(clause) && /教材|课本|书/u.test(message)
         && !/(?:帮我|替我|代我|为我)(?!找|搜|查|推荐).*(?:下单|付款|支付|预约|联系|买下)/u.test(clause)
         && !/(?:再|然后|并|同时|顺便).*(?:下单|付款|支付|预约|联系|买下)/u.test(clause)) continue;
+      // Relaxed: a sentence that also asks to find something is still searched; the note is appended later.
+      if (hasSearchRequest(message)) continue;
       return "unsupported";
     }
   }

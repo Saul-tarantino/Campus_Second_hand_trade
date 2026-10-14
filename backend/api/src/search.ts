@@ -1,9 +1,15 @@
 const equivalents = [
-  ['高数', '高等数学', '微积分'],
+  ['数学', '高数', '高等数学', '微积分'],
   ['英语', '英文', 'english'],
   ['书', '书籍', '课本', '教材', 'book', 'books', 'textbook', 'textbooks'],
   ['键盘', 'keyboard'], ['鼠标', 'mouse'], ['耳机', 'headphone', 'headphones', 'earphone', 'earphones'],
-  ['显示器', 'monitor'], ['自行车', '单车', 'bicycle', 'bike']
+  ['显示器', 'monitor'], ['自行车', '单车', 'bicycle', 'bike'],
+  ['线代', '线性代数', '概率论', '概率统计', '数理统计'],
+  ['物理', '大学物理', 'physics'], ['化学', 'chemistry'],
+  ['电脑', '笔记本', '笔记本电脑', 'laptop', 'notebook'], ['手机', 'mobile', 'phone'],
+  ['平板', '平板电脑', 'tablet'], ['台灯', '护眼灯'],
+  ['充电器', '充电头', 'charger'], ['音箱', '音响', 'speaker'],
+  ['水杯', '保温杯'], ['雨伞', '伞'], ['球拍', '羽毛球拍', '网球拍']
 ];
 
 /** Expand known equivalents within a term; separate terms must still all match. */

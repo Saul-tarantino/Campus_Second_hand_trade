@@ -48,6 +48,8 @@ interface TurnResult {
   searchPage: number;
 }
 
+import { mentionsTransactionAction } from "./policy.js";
+
 /** The model proposes a typed intent; only this service can execute the approved read workflow. */
 export async function runAgentTurn(message: string, options: ChatServiceOptions): Promise<TurnResult> {
   const { session, config } = options;
@@ -61,6 +63,8 @@ export async function runAgentTurn(message: string, options: ChatServiceOptions)
     filters, displayedListingIds, searchPage,
   });
   const earlyScope = scopeDecision(message);
+  // A sentence that both mentions a transaction action and asks to find something is still searched.
+  const deferRefusal = earlyScope === undefined && mentionsTransactionAction(message);
   let plan: TurnPlan;
   if (earlyScope) plan = emptyPlan(earlyScope);
   else {
@@ -141,7 +145,9 @@ export async function runAgentTurn(message: string, options: ChatServiceOptions)
   // Detail/comparison cards also define the display order for the next user reference.
   else if (details.length) displayedListingIds = details.map(({ listing }) => listing.listingId);
   const status = currentSearch && !currentSearch.result.listings.length ? "no_results" : "completed";
-  if (status === "no_results") return finish(noResultsReply(filters), status);
+  if (status === "no_results") {
+    return finish(deferRefusal ? `${noResultsReply(filters)}\n\n${UNSUPPORTED_REPLY}` : noResultsReply(filters), status);
+  }
   const mockReply = currentSearch ? `已查询到 ${recommendations.length} 条符合明确条件的商品，商品卡片中的信息均来自平台查询结果。`
     : plan.action === "preference" ? "我已读取当前用户的兴趣偏好，只会把它作为辅助排序信号，不会改变学校权限范围。"
     : plan.action === "compare" ? "我已重新读取指定商品详情，可以从价格、成色、取货校区和描述进行比较；缺失信息会标为未知。"
@@ -149,5 +155,6 @@ export async function runAgentTurn(message: string, options: ChatServiceOptions)
   const reply = await requestModelText(config, SYSTEM_PROMPT, JSON.stringify({
     action: plan.action, filters, results: modelResults,
   }), signal, mockReply);
-  return finish(reply ?? mockReply, status, recommendations);
+  const finalReply = reply ?? mockReply;
+  return finish(deferRefusal ? `${finalReply}\n\n${UNSUPPORTED_REPLY}` : finalReply, status, recommendations);
 }

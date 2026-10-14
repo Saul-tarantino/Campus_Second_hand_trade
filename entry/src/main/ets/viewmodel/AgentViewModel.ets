@@ -19,59 +19,15 @@ interface FormattedReply {
   detail: string;
 }
 
-function isInternalLine(line: string): boolean {
-  return /listing_[a-z0-9_-]+/i.test(line) ||
-    /^(?:\d+[.、)]\s*)?(?:标题|价格|成色|类别|取货校区|描述|商品编号|商品ID|title|price|condition|category|campus|listingId)\s*[:：]/i.test(line) ||
-    /^(?:list|listing|listings)\s*[:：]?$/i.test(line);
-}
-
-function visibleReplyLines(replyText: string): string[] {
-  const lines: string[] = [];
-  const normalized: string = replyText.replace(/\\n/g, '\n').replace(/\*\*/g, '').replace(/\r/g, '');
-  for (const rawLine of normalized.split('\n')) {
-    const original: string = rawLine.trim();
-    if (original === '' || isInternalLine(original)) {
-      continue;
-    }
-    const line: string = original.replace(/\b(?:list|listing|listings)\b\s*[:：]?/gi, '').trim();
-    if (line === '' || (!/[\u3400-\u9fff]/.test(line) && /[a-z]{2,}/i.test(line))) {
-      continue;
-    }
-    lines.push(line.replace(/\blike_new\b/gi, '近乎全新').replace(/\bgood\b/gi, '较好')
-      .replace(/\bfair\b/gi, '一般'));
-  }
-  return lines;
-}
-
-function isRepeatedProductLine(line: string, titles: string[]): boolean {
-  const content: string = line.replace(/^\d+[.、)]\s*/, '').trim();
-  for (const title of titles) {
-    if (title !== '' && content.startsWith(title)) {
-      const next: string = content.substring(title.length, title.length + 1);
-      if (next === '' || [' ', '（', '(', '，', ',', '：', ':'].includes(next)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
+/** The whole reply is shown as-is; only escape sequences and blank lines are normalised. */
 function formatReply(result: AgentResult): FormattedReply {
-  const lines: string[] = visibleReplyLines(result.replyText);
-  if (result.recommendations.length > 0) {
-    const productTitles: string[] = result.recommendations
-      .map((item: AgentRecommendation): string => item.product === null ? '' : item.product.title);
-    const naturalLines: string[] = lines.filter((line: string): boolean =>
-      !isRepeatedProductLine(line, productTitles));
-    const firstLine: string = naturalLines.length > 0 ? naturalLines[0] : '';
-    const hasNaturalLead: boolean = /[\u3400-\u9fff]/.test(firstLine);
-    return {
-      lead: hasNaturalLead ? firstLine : `为你找到 ${result.recommendations.length} 件相关商品，点击卡片查看详情。`,
-      detail: (hasNaturalLead ? naturalLines.slice(1) : naturalLines).join('\n')
-    };
-  }
-  if (lines.length > 0) {
-    return { lead: lines.join('\n'), detail: '' };
+  const full: string = result.replyText
+    .replace(/\\n/g, '\n')
+    .replace(/\r/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  if (full !== '') {
+    return { lead: full, detail: '' };
   }
   if (result.status === AgentStatus.NO_RESULTS) {
     return { lead: '暂时没有找到符合条件的商品，可以换个关键词或调整预算再试。', detail: '' };
