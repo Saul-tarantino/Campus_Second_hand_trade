@@ -49,6 +49,7 @@ interface TurnResult {
 }
 
 import { mentionsTransactionAction } from "./policy.js";
+import { hasSearchRequest } from "../intent/parser.js";
 
 /** The model proposes a typed intent; only this service can execute the approved read workflow. */
 export async function runAgentTurn(message: string, options: ChatServiceOptions): Promise<TurnResult> {
@@ -64,7 +65,7 @@ export async function runAgentTurn(message: string, options: ChatServiceOptions)
   });
   const earlyScope = scopeDecision(message);
   // A sentence that both mentions a transaction action and asks to find something is still searched.
-  const deferRefusal = earlyScope === undefined && mentionsTransactionAction(message);
+  let deferRefusal = earlyScope === undefined && mentionsTransactionAction(message);
   let plan: TurnPlan;
   if (earlyScope) plan = emptyPlan(earlyScope);
   else {
@@ -73,6 +74,11 @@ export async function runAgentTurn(message: string, options: ChatServiceOptions)
       message, previousFilters: filters, displayedListingCount: displayedListingIds.length, previousPage: searchPage,
     }), signal, JSON.stringify(mockPlan));
     plan = decodeTurnPlan(text);
+  }
+  // The plan model may refuse a mixed sentence on its own; a clear find request still gets served.
+  if (plan.action === "unsupported" && hasSearchRequest(message)) {
+    plan = { ...plan, action: "search" };
+    deferRefusal = true;
   }
   options.log("business_intent", { requestId: options.requestId, action: plan.action });
   switch (plan.action) {
