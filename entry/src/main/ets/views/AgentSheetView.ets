@@ -1,7 +1,8 @@
-import { AgentRecommendation, Product } from '../model/Models';
+import { AgentConversationSummary, AgentRecommendation, Product } from '../model/Models';
 import { AgentConversationTurn, AgentViewModel } from '../viewmodel/AgentViewModel';
 import { ProductCard } from '../components/ProductCard';
-import { COLOR_ERROR, COLOR_PAGE_BG, COLOR_PRIMARY, COLOR_PRIMARY_STRONG, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_TEXT_TERTIARY, CONTROL_RADIUS, SHEET_ACTION_HEIGHT, ROUTE_PRODUCT_DETAIL } from '../common/Constants';
+import { formatTime } from '../common/Utils';
+import { COLOR_ERROR, COLOR_PAGE_BG, COLOR_PRIMARY, COLOR_PRIMARY_SOFT, COLOR_PRIMARY_STRONG, COLOR_TEXT_PRIMARY, COLOR_TEXT_SECONDARY, COLOR_TEXT_TERTIARY, CONTROL_RADIUS, SHEET_ACTION_HEIGHT, ROUTE_PRODUCT_DETAIL } from '../common/Constants';
 
 @ComponentV2
 export struct AgentSheetView {
@@ -17,6 +18,17 @@ export struct AgentSheetView {
       Row({ space: 8 }) {
         Text('AI 找物').fontSize('20fp').fontWeight(FontWeight.Bold).fontColor(COLOR_TEXT_PRIMARY)
           .layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
+        Button(this.vm.historyVisible ? '返回对话' : '历史', { type: ButtonType.Normal }).fontSize('14fp')
+          .fontWeight(FontWeight.Medium).fontColor(COLOR_PRIMARY).backgroundColor(COLOR_PRIMARY_SOFT)
+          .height(SHEET_ACTION_HEIGHT).padding({ left: 12, right: 12 }).borderRadius(CONTROL_RADIUS)
+          .onClick(() => {
+            if (this.vm.historyVisible) {
+              this.vm.historyVisible = false;
+            } else {
+              this.vm.historyVisible = true;
+              this.vm.loadHistory();
+            }
+          });
         if (this.vm.turns.length > 0) {
           Button('新对话', { type: ButtonType.Normal }).fontSize('14fp').fontWeight(FontWeight.Medium)
             .fontColor(Color.White).backgroundColor(COLOR_PRIMARY_STRONG)
@@ -35,7 +47,9 @@ export struct AgentSheetView {
       Text('描述商品、预算或校区，支持继续补充条件').fontSize('12fp')
         .fontColor(COLOR_TEXT_SECONDARY).width('100%');
 
-      if (this.vm.turns.length === 0 && !this.vm.loading) {
+      if (this.vm.historyVisible) {
+        this.historyPanel();
+      } else if (this.vm.turns.length === 0 && !this.vm.loading) {
         Column({ space: 8 }) {
           Text('试试这样问').fontSize('16fp').fontWeight(FontWeight.Medium)
             .fontColor(COLOR_TEXT_PRIMARY);
@@ -91,6 +105,72 @@ export struct AgentSheetView {
       .width('100%');
     }
     .width('100%').height('100%').padding({ left: 16, right: 16, bottom: 20 });
+  }
+
+  @Builder
+  historyPanel(): void {
+    Column({ space: 8 }) {
+      Row() {
+        Text('历史对话').fontSize('15fp').fontWeight(FontWeight.Bold).fontColor(COLOR_TEXT_PRIMARY).layoutWeight(1);
+        Text('最多保留 5 条').fontSize('11fp').fontColor(COLOR_TEXT_TERTIARY);
+      }
+      .width('100%');
+      if (this.vm.historyLoading) {
+        Row({ space: 8 }) {
+          LoadingProgress().width(20).height(20).color(COLOR_PRIMARY);
+          Text('加载中…').fontSize('13fp').fontColor(COLOR_TEXT_TERTIARY);
+        }
+        .width('100%').justifyContent(FlexAlign.Center).margin({ top: 20 });
+      } else if (this.vm.historyError !== '') {
+        Text(this.vm.historyError).fontSize('13fp').fontColor(COLOR_ERROR)
+          .width('100%').textAlign(TextAlign.Center).margin({ top: 16 });
+        Button('重试').height(44).fontColor(COLOR_PRIMARY).onClick(() => this.vm.loadHistory());
+      } else if (this.vm.history.length === 0) {
+        Text('还没有历史对话').fontSize('14fp').fontColor(COLOR_TEXT_TERTIARY)
+          .width('100%').textAlign(TextAlign.Center).margin({ top: 24 });
+      } else {
+        List({ space: 8 }) {
+          ForEach(this.vm.history, (item: AgentConversationSummary) => {
+            ListItem() {
+              Row({ space: 10 }) {
+                Column({ space: 4 }) {
+                  Text(item.title).fontSize('14fp').fontWeight(FontWeight.Medium).fontColor(COLOR_TEXT_PRIMARY)
+                    .width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
+                  Text(`${formatTime(item.updatedAt)} · ${item.messageCount} 条消息`).fontSize('11fp')
+                    .fontColor(COLOR_TEXT_TERTIARY).width('100%');
+                  if (item.lastMessage !== undefined && item.lastMessage !== '') {
+                    Text(item.lastMessage).fontSize('12fp').fontColor(COLOR_TEXT_SECONDARY)
+                      .width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis });
+                  }
+                }
+                .layoutWeight(1).alignItems(HorizontalAlign.Start)
+                .onClick(() => this.openHistory(item));
+                Button('删除', { type: ButtonType.Normal }).fontSize('12fp').fontColor(COLOR_ERROR)
+                  .backgroundColor(COLOR_PAGE_BG).height(36).padding({ left: 10, right: 10 })
+                  .borderRadius(CONTROL_RADIUS).onClick(() => this.removeHistory(item));
+              }
+              .width('100%').padding(12).backgroundColor(Color.White).borderRadius(CONTROL_RADIUS);
+            }
+          }, (item: AgentConversationSummary): string => item.sessionId);
+        }
+        .layoutWeight(1).width('100%').scrollBar(BarState.Off);
+      }
+    }
+    .layoutWeight(1).width('100%').alignItems(HorizontalAlign.Start);
+  }
+
+  private async openHistory(item: AgentConversationSummary): Promise<void> {
+    const opened: boolean = await this.vm.openConversation(item.sessionId);
+    if (!opened) {
+      this.getUIContext().getPromptAction().showToast({ message: this.vm.error || '打开对话失败', duration: 1500 });
+    }
+  }
+
+  private async removeHistory(item: AgentConversationSummary): Promise<void> {
+    const removed: boolean = await this.vm.deleteConversation(item.sessionId);
+    this.getUIContext().getPromptAction().showToast({
+      message: removed ? '已删除' : (this.vm.error || '删除失败，请稍后重试'), duration: 1500
+    });
   }
 
   @Builder

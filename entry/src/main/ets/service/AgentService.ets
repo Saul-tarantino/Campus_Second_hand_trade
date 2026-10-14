@@ -1,6 +1,9 @@
 import { http } from '@kit.NetworkKit';
 import {
   AgentChatResponse,
+  AgentConversationDetail,
+  AgentConversationListResponse,
+  AgentConversationSummary,
   AgentRecommendation,
   AgentResult,
   AgentStatus,
@@ -11,6 +14,9 @@ import { productService } from './ProductService';
 
 export interface AgentService {
   queryByNaturalLanguage(query: string, sessionId: string | null): Promise<AgentResult>;
+  listConversations(): Promise<AgentConversationSummary[]>;
+  getConversation(sessionId: string): Promise<AgentConversationDetail>;
+  deleteConversation(sessionId: string): Promise<void>;
 }
 
 let requestSequence: number = 0;
@@ -76,6 +82,22 @@ export class BusinessAgentService implements AgentService {
       replyText: response.reply,
       recommendations: recommendations
     };
+  }
+
+  async listConversations(): Promise<AgentConversationSummary[]> {
+    const response = await businessApiClient.request<AgentConversationListResponse>(http.RequestMethod.GET,
+      '/api/v1/agent/conversations');
+    return Array.isArray(response.items) ? response.items : [];
+  }
+
+  async getConversation(sessionId: string): Promise<AgentConversationDetail> {
+    return await businessApiClient.request<AgentConversationDetail>(http.RequestMethod.GET,
+      `/api/v1/agent/conversations/${encodeURIComponent(sessionId)}`);
+  }
+
+  async deleteConversation(sessionId: string): Promise<void> {
+    await businessApiClient.request<Record<string, Object>>(http.RequestMethod.DELETE,
+      `/api/v1/agent/conversations/${encodeURIComponent(sessionId)}`);
   }
 }
 

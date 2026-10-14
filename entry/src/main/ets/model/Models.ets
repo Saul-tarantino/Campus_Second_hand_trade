@@ -102,6 +102,33 @@ export interface AgentListingRecommendation {
   reasons: string[];
 }
 
+/** One saved AI conversation; the server keeps at most five per user. */
+export interface AgentConversationSummary {
+  sessionId: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messageCount: number;
+  lastMessage?: string;
+  lastMessageRole?: string;
+}
+
+export interface AgentConversationMessage {
+  id: string;
+  role: string;
+  content: string;
+  createdAt: number;
+}
+
+export interface AgentConversationDetail {
+  conversation: AgentConversationSummary;
+  messages: AgentConversationMessage[];
+}
+
+export interface AgentConversationListResponse {
+  items: AgentConversationSummary[];
+}
+
 export interface PublishDraft {
   title: string;
   description: string;

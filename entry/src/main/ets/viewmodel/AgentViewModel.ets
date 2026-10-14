@@ -1,4 +1,9 @@
-import { AgentRecommendation, AgentResult, AgentStatus } from '../model/Models';
+import {
+  AgentConversationDetail,
+  AgentConversationMessage,
+  AgentConversationSummary,
+  AgentRecommendation, AgentResult, AgentStatus
+} from '../model/Models';
 import { agentService } from '../service/AgentService';
 
 export interface AgentConversationTurn {
@@ -77,6 +82,27 @@ function formatReply(result: AgentResult): FormattedReply {
   return { lead: '请继续描述想找的商品，我会帮你筛选。', detail: '' };
 }
 
+/** Rebuilds the visible transcript from stored messages (recommendation cards are not replayed). */
+function buildTurns(messages: AgentConversationMessage[]): AgentConversationTurn[] {
+  const turns: AgentConversationTurn[] = [];
+  let question: string = '';
+  for (const message of messages) {
+    if (message.role === 'user') {
+      question = message.content;
+      continue;
+    }
+    turns.push({
+      id: message.id,
+      question: question,
+      replyLead: message.content,
+      replyDetail: '',
+      recommendations: []
+    });
+    question = '';
+  }
+  return turns;
+}
+
 @ObservedV2
 export class AgentViewModel {
   @Trace query: string = '';
@@ -84,7 +110,56 @@ export class AgentViewModel {
   @Trace turns: AgentConversationTurn[] = [];
   @Trace error: string = '';
   @Trace sessionId: string | null = null;
+  @Trace history: AgentConversationSummary[] = [];
+  @Trace historyLoading: boolean = false;
+  @Trace historyError: string = '';
+  @Trace historyVisible: boolean = false;
   private requestSeq: number = 0;
+
+  async loadHistory(): Promise<void> {
+    this.historyLoading = true;
+    this.historyError = '';
+    try {
+      this.history = await agentService.listConversations();
+    } catch (error) {
+      this.historyError = (error as Error).message || '加载历史对话失败';
+    } finally {
+      this.historyLoading = false;
+    }
+  }
+
+  /** Reopens a stored conversation so the next message continues it. */
+  async openConversation(sessionId: string): Promise<boolean> {
+    this.error = '';
+    try {
+      const detail: AgentConversationDetail = await agentService.getConversation(sessionId);
+      this.requestSeq += 1;
+      this.loading = false;
+      this.turns = buildTurns(detail.messages);
+      this.sessionId = detail.conversation.sessionId;
+      this.query = '';
+      this.historyVisible = false;
+      return true;
+    } catch (error) {
+      this.error = (error as Error).message || '打开对话失败';
+      return false;
+    }
+  }
+
+  async deleteConversation(sessionId: string): Promise<boolean> {
+    this.error = '';
+    try {
+      await agentService.deleteConversation(sessionId);
+      if (this.sessionId === sessionId) {
+        this.resetConversation(true);
+      }
+      await this.loadHistory();
+      return true;
+    } catch (error) {
+      this.error = (error as Error).message || '删除对话失败';
+      return false;
+    }
+  }
 
   resetConversation(force: boolean = false): void {
     if (this.loading && !force) {
