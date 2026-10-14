@@ -13,6 +13,7 @@ export interface User {
   avatar: string;
   phone?: string;
   studentId?: string;
+  role?: string;
 }
 
 export interface Product {
@@ -127,6 +128,35 @@ export interface AgentConversationDetail {
 
 export interface AgentConversationListResponse {
   items: AgentConversationSummary[];
+}
+
+/** Administrator views: a listing plus its seller and occupancy. */
+export interface AdminProductItem {
+  id: string;
+  title: string;
+  price: number;
+  status?: string;
+  category?: string;
+  campus?: string;
+  seller?: User;
+  activeTransactionCount?: number;
+}
+
+export interface AdminTransactionItem {
+  transaction: Transaction;
+  product: Product;
+  buyer: User;
+  seller: User;
+}
+
+export interface AdminProductsResponse {
+  items: AdminProductItem[];
+  nextCursor: string | null;
+}
+
+export interface AdminTransactionsResponse {
+  items: AdminTransactionItem[];
+  nextCursor: string | null;
 }
 
 export interface PublishDraft {

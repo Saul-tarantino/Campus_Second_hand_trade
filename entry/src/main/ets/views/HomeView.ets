@@ -6,6 +6,7 @@ import { ProductCard } from '../components/ProductCard';
 import { StateView } from '../components/StateView';
 import { SearchSheetView } from './SearchSheetView';
 import { AgentSheetView } from './AgentSheetView';
+import { AdminSheetView } from './AdminSheetView';
 import { HOME_CATEGORIES, homeCategory } from '../common/MarketOptions';
 import {
   FONT_TITLE, PAGE_PADDING, GRID_GAP, CONTROL_RADIUS, COLOR_DIVIDER, COLOR_PAGE_BG, COLOR_PRIMARY, COLOR_PRIMARY_SOFT,
@@ -23,6 +24,7 @@ export struct HomeView {
   @Local category: string = '全部';
   @Local searchSheetVisible: boolean = false;
   @Local agentSheetVisible: boolean = false;
+  @Local adminSheetVisible: boolean = false;
   private categories: string[] = HOME_CATEGORIES;
   private feedScroller: Scroller = new Scroller();
   private visibleProductId: string = '';
@@ -213,6 +215,15 @@ export struct HomeView {
   }
 
   @Builder
+  adminSheetContent(): void {
+    AdminSheetView({
+      onClose: (): void => {
+        this.adminSheetVisible = false;
+      }
+    });
+  }
+
+  @Builder
   profilePage(): void {
     Scroll() {
       Column({ space: 16 }) {
@@ -235,6 +246,21 @@ export struct HomeView {
         .width('100%').padding(18).backgroundColor(Color.White).borderRadius(16);
         Text('我的闲置').fontSize('15fp').fontWeight(FontWeight.Bold).fontColor(COLOR_TEXT_PRIMARY)
           .width('100%').margin({ top: 8 });
+        if (this.user !== null && this.user.role === 'admin') {
+          Row({ space: 12 }) {
+            Column({ space: 4 }) {
+              Text('管理后台').fontSize('15fp').fontWeight(FontWeight.Medium).fontColor(COLOR_TEXT_PRIMARY);
+              Text('下架商品 · 取消或恢复交易').fontSize('12fp').fontColor(COLOR_TEXT_TERTIARY);
+            }
+            .layoutWeight(1).alignItems(HorizontalAlign.Start);
+            Text('›').fontSize('18fp').fontColor(COLOR_TEXT_TERTIARY);
+          }
+          .width('100%').padding(18).backgroundColor(Color.White).borderRadius(16)
+          .onClick(() => this.adminSheetVisible = true)
+          .bindSheet($$this.adminSheetVisible, this.adminSheetContent(), {
+            detents: [SheetSize.LARGE], showClose: false
+          });
+        }
         this.profileLink('我发布的', '管理在售商品', ROUTE_SELLER_HOME);
         this.profileLink('我的交易', '查看预约与聊天消息', ROUTE_TRADE_LIST);
         Button('退出登录').width('100%').height(46).margin({ top: 12 })
